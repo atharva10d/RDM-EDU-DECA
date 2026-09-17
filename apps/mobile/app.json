@@ -1,15 +1,11 @@
 {
   "expo": {
     "name": "EduDeca",
-    "slug": "edudeca",
+    "slug": "edudeca-workspace",
     "scheme": "edudeca",
     "version": "1.0.0",
     "orientation": "portrait",
     "userInterfaceStyle": "dark",
-    "splash": {
-      "resizeMode": "contain",
-      "backgroundColor": "#0B0E14"
-    },
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.edudeca.mobile"
@@ -21,7 +17,13 @@
       }
     },
     "plugins": [
-      "expo-secure-store"
-    ]
+      "expo-secure-store",
+      "@react-native-google-signin/google-signin"
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "c2f1461c-7aef-439a-9290-cb8ebebacea0"
+      }
+    }
   }
 }

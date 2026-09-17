@@ -12,7 +12,7 @@ import {
   Platform,
 } from 'react-native';
 import { colors, typography, borderRadius, spacing } from '@edudeca/ui';
-import { useAuth } from '@clerk/expo';
+import { supabase } from '../lib/supabase';
 import { useAppStore } from '../store/useAppStore';
 import {
   Home,
@@ -41,14 +41,6 @@ export const BurgerDrawer: React.FC<BurgerDrawerProps> = ({
   const slideAnim = useRef(new Animated.Value(320)).current;
   const resetState = useAppStore((state) => state.resetState);
 
-  let clerkSignOut: (() => Promise<void>) | null = null;
-  try {
-    const { signOut } = useAuth();
-    clerkSignOut = signOut;
-  } catch (_e) {
-    // Local / Offline mode
-  }
-
   useEffect(() => {
     if (visible) {
       Animated.timing(slideAnim, {
@@ -69,12 +61,10 @@ export const BurgerDrawer: React.FC<BurgerDrawerProps> = ({
 
   const handleSignOut = async () => {
     onClose();
-    if (clerkSignOut) {
-      try {
-        await clerkSignOut();
-      } catch (_err) {
-        // Ignored
-      }
+    try {
+      await supabase.auth.signOut();
+    } catch (_err) {
+      // Ignored
     }
     resetState();
   };

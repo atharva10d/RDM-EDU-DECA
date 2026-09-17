@@ -69,7 +69,7 @@ interface AppState {
 const initialProfile: UserProfile = {
   id: 'user_dev_01',
   name: 'Student Whiz',
-  email: 'student@edudeca.in',
+  email: '',
   classGrade: 'Class 11',
   scienceStream: true,
   institution: '',

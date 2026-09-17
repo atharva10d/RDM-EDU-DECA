@@ -15,7 +15,6 @@ import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RouteProp } from '@react-navigation/native';
 import { DashboardStackParamList } from '../../navigation/types';
 import { colors, typography, borderRadius, Button } from '@edudeca/ui';
-import { QUESTION_BANK, TEN_DISCIPLINE_TAGS } from '../../utils/mockData';
 import { ArrowLeft } from 'lucide-react-native';
 import { Question } from '@edudeca/types';
 import { useAppStore } from '../../store/useAppStore';
@@ -28,15 +27,6 @@ interface QuizScreenProps {
   navigation?: any;
   route?: any;
 }
-
-const shuffle = <T,>(array: T[]): T[] => {
-  const arr = [...array];
-  for (let i = arr.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
-    [arr[i], arr[j]] = [arr[j], arr[i]];
-  }
-  return arr;
-};
 
 export const QuizScreen: React.FC<QuizScreenProps> = ({ navigation, route }) => {
   const roundLength = route.params?.quizLength || 10;
@@ -55,54 +45,38 @@ export const QuizScreen: React.FC<QuizScreenProps> = ({ navigation, route }) => 
   const [pickedIndex, setPickedIndex] = useState<number | null>(null);
   const [timeLeft, setTimeLeft] = useState<number>(20);
   const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
+  const [isLoadingQuestions, setIsLoadingQuestions] = useState<boolean>(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   const timerRef = useRef<any>(null);
   const startTimeRef = useRef<number>(Date.now());
 
-  // Generate question pool on mount
+  const loadQuestions = async () => {
+    setIsLoadingQuestions(true);
+    setLoadError(null);
+    try {
+      const serverQuestions = await quizService.fetchChallengeQuestions(targetLevel);
+      if (serverQuestions.length > 0) {
+        // Use only the number of questions needed for this round
+        setQuestions(serverQuestions.slice(0, roundLength));
+      } else {
+        setLoadError('No questions available for this level. Please try again later.');
+      }
+    } catch (err: any) {
+      console.log('[QuizScreen] Question fetch error:', err.message);
+      setLoadError(err.message || 'Failed to load questions. Check your connection.');
+    } finally {
+      setIsLoadingQuestions(false);
+    }
+  };
+
+  // Fetch questions from the EduDeca website API on mount
   useEffect(() => {
     startTimeRef.current = Date.now();
-    let generated: Question[] = [];
-
-    if (roundLength === 10) {
-      const shuffledTags = shuffle([...TEN_DISCIPLINE_TAGS]);
-      generated = shuffledTags.map((tag) => {
-        const candidates = QUESTION_BANK.filter((q) => q.tag === tag);
-        const q = candidates.length
-          ? candidates[Math.floor(Math.random() * candidates.length)]
-          : QUESTION_BANK[0];
-        const correctText = q.o[q.c];
-        const shuffledOpts = shuffle(q.o);
-        return {
-          tag: q.tag,
-          color: q.color,
-          q: q.q,
-          options: shuffledOpts,
-          correctIndex: shuffledOpts.indexOf(correctText),
-        };
-      });
-    } else {
-      let pool = shuffle(QUESTION_BANK);
-      while (pool.length < roundLength) {
-        pool = pool.concat(shuffle(QUESTION_BANK));
-      }
-      generated = pool.slice(0, roundLength).map((q) => {
-        const correctText = q.o[q.c];
-        const shuffledOpts = shuffle(q.o);
-        return {
-          tag: q.tag,
-          color: q.color,
-          q: q.q,
-          options: shuffledOpts,
-          correctIndex: shuffledOpts.indexOf(correctText),
-        };
-      });
-    }
-
-    setQuestions(generated);
+    loadQuestions();
     setCurrentIndex(0);
     setScore(0);
-  }, [roundLength]);
+  }, [roundLength, targetLevel]);
 
   // High-precision countdown timer
   useEffect(() => {
@@ -246,6 +220,33 @@ export const QuizScreen: React.FC<QuizScreenProps> = ({ navigation, route }) => 
       },
     ]);
   };
+
+  if (loadError && questions.length === 0 && !isLoadingQuestions) {
+    return (
+      <SafeAreaView style={styles.safeArea}>
+        <View style={styles.loadingContainer}>
+          <Text style={{ color: colors.amber, fontSize: 18, fontWeight: 'bold', marginBottom: 8 }}>
+            Challenge Unavailable
+          </Text>
+          <Text style={{ color: colors.muted, textAlign: 'center', marginHorizontal: 32, marginBottom: 20 }}>
+            {loadError}
+          </Text>
+          <TouchableOpacity
+            style={{ backgroundColor: colors.teal, paddingHorizontal: 28, paddingVertical: 12, borderRadius: 10, marginBottom: 12 }}
+            onPress={loadQuestions}
+          >
+            <Text style={{ color: '#000', fontWeight: 'bold' }}>Try Again</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={{ paddingHorizontal: 20, paddingVertical: 10 }}
+            onPress={() => navigation.navigate('Dashboard')}
+          >
+            <Text style={{ color: colors.muted }}>Back to Dashboard</Text>
+          </TouchableOpacity>
+        </View>
+      </SafeAreaView>
+    );
+  }
 
   if (questions.length === 0 || isSubmitting) {
     return (

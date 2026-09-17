@@ -19,7 +19,7 @@ import { DashboardStackParamList } from '../../navigation/types';
 import { colors, typography, borderRadius, spacing, Button, Card } from '@edudeca/ui';
 import { useAppStore } from '../../store/useAppStore';
 import { userService } from '../../services';
-import { useAuth } from '@clerk/expo';
+import { supabase } from '../../lib/supabase';
 import {
   ArrowLeft,
   User as UserIcon,
@@ -57,13 +57,7 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({ navigation }) => {
   const selectedTrack = useAppStore((state) => state.selectedTrack);
   const setSelectedTrack = useAppStore((state) => state.setSelectedTrack);
 
-  let clerkSignOut: (() => Promise<void>) | null = null;
-  try {
-    const { signOut } = useAuth();
-    clerkSignOut = signOut;
-  } catch (_e) {
-    // Local offline mode
-  }
+
 
   const [refreshing, setRefreshing] = useState(false);
   const [editModalVisible, setEditModalVisible] = useState(false);
@@ -79,8 +73,17 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({ navigation }) => {
 
   const fetchProfile = useCallback(async () => {
     try {
-      if (user?.id) {
-        const liveProfile = await userService.fetchCurrentUser(user.id);
+      // 1. Sync Supabase authenticated session email if available
+      const { data: sessionData } = await supabase.auth.getSession();
+      const sessionEmail = sessionData.session?.user?.email;
+      if (sessionEmail && sessionEmail !== user.email) {
+        setUser({ email: sessionEmail });
+      }
+
+      // 2. Fetch profile from database
+      const uid = sessionData.session?.user?.id || user?.id;
+      if (uid) {
+        const liveProfile = await userService.fetchCurrentUser(uid);
         if (liveProfile) {
           setUserProfile(liveProfile);
         }
@@ -88,7 +91,7 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({ navigation }) => {
     } catch (_err) {
       // Offline fallback
     }
-  }, [user?.id, setUserProfile]);
+  }, [user?.id, user.email, setUser, setUserProfile]);
 
   useEffect(() => {
     fetchProfile();
@@ -117,6 +120,7 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({ navigation }) => {
     setIsSaving(true);
     const updatedData = {
       name: editName.trim(),
+      email: user.email,
       institution: editInstitution.trim(),
       classGrade: editGrade,
       selectedTrack: editTrack,
@@ -127,12 +131,12 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({ navigation }) => {
       setUser(updatedData);
       setSelectedTrack(editTrack);
 
-      // Sync to backend MongoDB
+      // Sync to Supabase backend database
       await userService.updateUserProfile(updatedData, user?.id);
       setEditModalVisible(false);
       Alert.alert('Success', 'Profile updated successfully! 🎉');
     } catch (err: any) {
-      Alert.alert('Notice', 'Profile updated locally.');
+      Alert.alert('Success', 'Profile updated locally! 🎉');
       setEditModalVisible(false);
     } finally {
       setIsSaving(false);
@@ -162,12 +166,10 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({ navigation }) => {
         text: 'Sign Out',
         style: 'destructive',
         onPress: async () => {
-          if (clerkSignOut) {
-            try {
-              await clerkSignOut();
-            } catch (_err) {
-              // Ignored
-            }
+          try {
+            await supabase.auth.signOut();
+          } catch (_err) {
+            // Ignored
           }
           resetState();
         },
@@ -238,7 +240,7 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({ navigation }) => {
                   <Text style={styles.verifiedText}>Verified</Text>
                 </View>
               </View>
-              <Text style={styles.userEmail}>{user.email || 'student@edudeca.in'}</Text>
+              <Text style={styles.userEmail}>{user.email || 'No email registered'}</Text>
               <View style={styles.userBadgeRow}>
                 <View style={styles.gradeBadge}>
                   <Text style={styles.gradeBadgeText}>{user.classGrade || 'Class 11'}</Text>
@@ -294,7 +296,7 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({ navigation }) => {
                 </View>
               </View>
               <Text style={styles.detailValue}>
-                {user.email || 'student@edudeca.in'}
+                {user.email || 'No email registered'}
               </Text>
             </View>
           </View>
@@ -414,7 +416,7 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({ navigation }) => {
               <View style={styles.readOnlyInputBox}>
                 <Mail size={15} color={colors.teal} style={{ marginRight: 8 }} />
                 <Text style={styles.readOnlyEmailText}>
-                  {user.email || 'student@edudeca.in'}
+                  {user.email || 'No email registered'}
                 </Text>
               </View>
 

@@ -5,10 +5,8 @@ import { RootStackParamList } from './types';
 import { AuthStackNavigator } from './AuthStackNavigator';
 import { MainTabNavigator } from './MainTabNavigator';
 import { colors } from '@edudeca/ui';
-import { useAuth } from '@clerk/expo';
 import { useAppStore } from '../store/useAppStore';
-
-import { setAuthTokenGetter, setCurrentUserId } from '../services/apiClient';
+import { Session } from '@supabase/supabase-js';
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
 
@@ -26,32 +24,10 @@ const AppNavTheme = {
 };
 
 interface RootNavigatorProps {
-  isClerkEnabled?: boolean;
+  session: Session | null;
 }
 
-const ClerkAuthNavigator: React.FC = () => {
-  let isSignedIn = false;
-  let clerkUserId: string | null = null;
-  let clerkGetToken: any = null;
-
-  try {
-    const clerkAuth = useAuth();
-    isSignedIn = Boolean(clerkAuth.isSignedIn);
-    clerkUserId = clerkAuth.userId || null;
-    clerkGetToken = clerkAuth.getToken;
-  } catch (_e) {
-    isSignedIn = false;
-  }
-
-  React.useEffect(() => {
-    if (clerkUserId) {
-      setCurrentUserId(clerkUserId);
-    }
-    if (clerkGetToken) {
-      setAuthTokenGetter(clerkGetToken);
-    }
-  }, [clerkUserId, clerkGetToken]);
-
+export const RootNavigator: React.FC<RootNavigatorProps> = ({ session }) => {
   const isGuestOrDevAuthenticated = useAppStore(
     (state) => state.isGuestOrDevAuthenticated
   );
@@ -61,58 +37,25 @@ const ClerkAuthNavigator: React.FC = () => {
     user?.institution && user.institution.trim().length > 0 && user?.state && user?.city
   );
 
+  // User is authenticated if they have a Supabase session OR completed profile locally
   const isAuthenticated = Boolean(
-    isSignedIn || isGuestOrDevAuthenticated || hasCompletedProfile
+    session || isGuestOrDevAuthenticated || hasCompletedProfile
   );
 
-  return (
-    <Stack.Navigator
-      screenOptions={{
-        headerShown: false,
-        animation: 'fade',
-      }}
-    >
-      {!isAuthenticated ? (
-        <Stack.Screen name="Auth" component={AuthStackNavigator as React.ComponentType<any>} />
-      ) : (
-        <Stack.Screen name="Main" component={MainTabNavigator as React.ComponentType<any>} />
-      )}
-    </Stack.Navigator>
-  );
-};
-
-const MockAuthNavigator: React.FC = () => {
-  const isGuestOrDevAuthenticated = useAppStore(
-    (state) => state.isGuestOrDevAuthenticated
-  );
-  const user = useAppStore((state) => state.user);
-
-  const hasCompletedProfile = Boolean(
-    user?.institution && user.institution.trim().length > 0 && user?.state && user?.city
-  );
-
-  const isAuthenticated = Boolean(isGuestOrDevAuthenticated || hasCompletedProfile);
-
-  return (
-    <Stack.Navigator
-      screenOptions={{
-        headerShown: false,
-        animation: 'fade',
-      }}
-    >
-      {!isAuthenticated ? (
-        <Stack.Screen name="Auth" component={AuthStackNavigator as React.ComponentType<any>} />
-      ) : (
-        <Stack.Screen name="Main" component={MainTabNavigator as React.ComponentType<any>} />
-      )}
-    </Stack.Navigator>
-  );
-};
-
-export const RootNavigator: React.FC<RootNavigatorProps> = ({ isClerkEnabled = false }) => {
   return (
     <NavigationContainer theme={AppNavTheme}>
-      {isClerkEnabled ? <ClerkAuthNavigator /> : <MockAuthNavigator />}
+      <Stack.Navigator
+        screenOptions={{
+          headerShown: false,
+          animation: 'fade',
+        }}
+      >
+        {!isAuthenticated ? (
+          <Stack.Screen name="Auth" component={AuthStackNavigator as React.ComponentType<any>} />
+        ) : (
+          <Stack.Screen name="Main" component={MainTabNavigator as React.ComponentType<any>} />
+        )}
+      </Stack.Navigator>
     </NavigationContainer>
   );
 };

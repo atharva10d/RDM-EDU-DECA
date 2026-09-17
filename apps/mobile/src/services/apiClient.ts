@@ -1,35 +1,11 @@
 import { ApiResponse } from '@edudeca/types';
-import Constants from 'expo-constants';
+import { supabase } from '../lib/supabase';
 
-// Central API Base URL with dynamic fallback to current Metro Host IP
-const getDynamicApiUrl = () => {
-  if (process.env.EXPO_PUBLIC_API_URL) {
-    return process.env.EXPO_PUBLIC_API_URL;
-  }
-  const hostUri = Constants.expoConfig?.hostUri;
-  if (hostUri) {
-    const hostIp = hostUri.split(':')[0];
-    if (hostIp && hostIp !== 'localhost' && hostIp !== '127.0.0.1') {
-      return `http://${hostIp}:4000/api`;
-    }
-  }
-  return 'http://192.168.0.103:4000/api';
-};
+// Note: This apiClient is kept for backward compatibility with the referralService
+// and any remaining Express API calls during the transition.
+// New services should use `supabase` client or `edudecaApi` directly.
 
-const API_BASE_URL = getDynamicApiUrl();
-
-type TokenGetter = () => Promise<string | null>;
-
-let tokenGetter: TokenGetter | null = null;
-let currentUserId: string | null = null;
-
-export const setAuthTokenGetter = (getter: TokenGetter) => {
-  tokenGetter = getter;
-};
-
-export const setCurrentUserId = (userId: string | null) => {
-  currentUserId = userId;
-};
+const API_BASE_URL = process.env.EXPO_PUBLIC_API_URL || 'http://localhost:4000/api';
 
 interface RequestOptions extends RequestInit {
   params?: Record<string, string | number | boolean | undefined>;
@@ -46,6 +22,10 @@ export class ApiError extends Error {
     this.data = data;
   }
 }
+
+// Legacy compatibility stubs — no longer needed but kept to avoid import breaks
+export const setAuthTokenGetter = (_getter: any) => {};
+export const setCurrentUserId = (_userId: string | null) => {};
 
 async function request<T>(endpoint: string, options: RequestOptions = {}): Promise<T> {
   const { params, headers: customHeaders, ...fetchOptions } = options;
@@ -71,21 +51,15 @@ async function request<T>(endpoint: string, options: RequestOptions = {}): Promi
     ...(customHeaders as Record<string, string>),
   };
 
-  // Inject Clerk JWT Token if available
-  if (tokenGetter) {
-    try {
-      const token = await tokenGetter();
-      if (token) {
-        headers['Authorization'] = `Bearer ${token}`;
-      }
-    } catch (_err) {
-      // Ignore token getter errors in offline mode
+  // Inject Supabase access token if available
+  try {
+    const { data: sessionData } = await supabase.auth.getSession();
+    const token = sessionData.session?.access_token;
+    if (token) {
+      headers['Authorization'] = `Bearer ${token}`;
     }
-  }
-
-  // Inject current active User ID fallback
-  if (currentUserId && !headers['x-user-id']) {
-    headers['x-user-id'] = currentUserId;
+  } catch (_err) {
+    // Ignore — offline mode
   }
 
   try {
