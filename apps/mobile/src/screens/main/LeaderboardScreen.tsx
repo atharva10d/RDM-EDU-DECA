@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useCallback } from 'react';
 import {
   View,
   Text,
@@ -13,8 +13,7 @@ import { useFocusEffect } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { DashboardStackParamList } from '../../navigation/types';
 import { colors, typography, borderRadius, spacing, Card } from '@edudeca/ui';
-import { LEADERBOARD_DATA } from '../../utils/mockData';
-import { ArrowLeft, Sparkles, Trophy, Globe } from 'lucide-react-native';
+import { ArrowLeft, Trophy, Globe } from 'lucide-react-native';
 import { LeaderboardEntry } from '@edudeca/types';
 import { leaderboardService } from '../../services';
 import { useAppStore } from '../../store/useAppStore';
@@ -48,39 +47,9 @@ export const LeaderboardScreen: React.FC<LeaderboardScreenProps> = ({ navigation
         data = await leaderboardService.fetchGlobalLeaderboard(50, user?.id);
       }
 
-      if (data && data.length > 0) {
-        setRankings(data);
-      } else {
-        // Fallback sample data if backend is starting up
-        const sampleRows = (LEADERBOARD_DATA[selectedLevel] || []).map((row, idx) => ({
-          rank: idx + 1,
-          userId: `user_sample_${idx}`,
-          name: row.name,
-          score: row.score,
-          time: `${row.time} min`,
-          rawScore: 10,
-          rawTime: 30,
-          color: row.color || colors.teal,
-          institution: 'Top Whiz Institute',
-          isCurrentUser: idx === 3,
-        }));
-        setRankings(sampleRows);
-      }
+      setRankings(data || []);
     } catch (_err) {
-      // Offline fallback: load mock data
-      const sampleRows = (LEADERBOARD_DATA[selectedLevel] || []).map((row, idx) => ({
-        rank: idx + 1,
-        userId: `user_sample_${idx}`,
-        name: row.name,
-        score: row.score,
-        time: `${row.time} min`,
-        rawScore: 10,
-        rawTime: 30,
-        color: row.color || colors.teal,
-        institution: 'Top Whiz Institute',
-        isCurrentUser: false,
-      }));
-      setRankings(sampleRows);
+      setRankings([]);
     } finally {
       setLoading(false);
       setRefreshing(false);

@@ -9,7 +9,7 @@ export const submitQuiz = async (
   res: Response
 ): Promise<void> => {
   try {
-    const userId = req.body.userId || req.userId;
+    const userId = req.userId;
     if (!userId) {
       res.status(401).json({ success: false, error: 'Unauthorized: User ID is required.' });
       return;
@@ -36,6 +36,19 @@ export const submitQuiz = async (
     }
 
     const questionCount = total || totalQuestions || 10;
+    if (
+      !Number.isInteger(Number(score)) ||
+      Number(score) < 0 ||
+      Number(score) > Number(questionCount) ||
+      !Number.isFinite(Number(timeTaken)) ||
+      Number(timeTaken) < 0
+    ) {
+      res.status(400).json({
+        success: false,
+        error: 'Invalid quiz score or completion time.',
+      });
+      return;
+    }
     const accuracy =
       clientAccuracy !== undefined
         ? clientAccuracy
