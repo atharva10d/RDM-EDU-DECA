@@ -1,7 +1,10 @@
 import { supabase } from '../lib/supabase';
 import { UserProfile } from '@edudeca/types';
 import { edudecaApi } from './edudecaApi';
-import { toEdudecaProfileRow } from './studentLoop/profileColumns';
+import {
+  assertProfileWriteSucceeded,
+  toEdudecaProfileRow,
+} from './studentLoop/profileColumns';
 
 export const userService = {
   /**
@@ -66,13 +69,10 @@ export const userService = {
     }
 
     if (uid) {
-      try {
-        await supabase
-          .from('edudeca_profiles')
-          .upsert({ id: uid, ...toEdudecaProfileRow(profileUpdate) }, { onConflict: 'id' });
-      } catch (_e) {
-        // Ignore if RLS restrictions apply
-      }
+      const { error } = await supabase
+        .from('edudeca_profiles')
+        .upsert({ id: uid, ...toEdudecaProfileRow(profileUpdate) }, { onConflict: 'id' });
+      assertProfileWriteSucceeded(error);
     }
 
     return {
