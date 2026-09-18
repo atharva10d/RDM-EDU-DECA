@@ -75,6 +75,7 @@ export const QuizScreen: React.FC<QuizScreenProps> = ({ navigation, route }) => 
   const scoreRef = useRef<number>(0);
   const strikesRef = useRef<number>(0);
   const resultsRef = useRef<QuizResult[]>([]);
+  const strikeEndedRef = useRef<boolean>(false);
 
   const initChallenge = async () => {
     setIsLoadingQuestions(true);
@@ -113,6 +114,7 @@ export const QuizScreen: React.FC<QuizScreenProps> = ({ navigation, route }) => 
         scoreRef.current = 0;
         strikesRef.current = 0;
         resultsRef.current = [];
+        strikeEndedRef.current = false;
         setScore(0);
         setStrikes(0);
         setResults([]);
@@ -221,8 +223,8 @@ export const QuizScreen: React.FC<QuizScreenProps> = ({ navigation, route }) => 
         console.warn('[QuizScreen] Failed to refresh progress after challenge complete:', loadErr);
       }
       const accuracy = questions.length > 0 ? Math.round((scoreSnapshot / questions.length) * 100) : 0;
-      const nextLevel = response.progress?.campaignLevel;
-      const xpEarned = response.progress?.xp ?? scoreSnapshot * 10;
+      const nextLevel = response?.progress?.campaignLevel;
+      const xpEarned = response?.progress?.xp ?? scoreSnapshot * 10;
       navigation.replace('Results', {
         score: scoreSnapshot,
         total: questions.length,
@@ -270,6 +272,7 @@ export const QuizScreen: React.FC<QuizScreenProps> = ({ navigation, route }) => 
       strikesRef.current = nextStrikes;
       setStrikes(nextStrikes);
       if (nextStrikes >= limitStrikes) {
+        strikeEndedRef.current = true;
         setTimeout(() => handleEndChallenge('strikes'), 800);
       }
     }
@@ -284,6 +287,7 @@ export const QuizScreen: React.FC<QuizScreenProps> = ({ navigation, route }) => 
   };
 
   const handleNext = () => {
+    if (strikeEndedRef.current) return;
     const currentQ = questions[currentIndex];
     const isSkipped = pickedIndex === null;
     let skippedResult: QuizResult | undefined;
@@ -301,6 +305,7 @@ export const QuizScreen: React.FC<QuizScreenProps> = ({ navigation, route }) => 
       strikesRef.current = nextStrikes;
       setStrikes(nextStrikes);
       if (nextStrikes >= limitStrikes) {
+        strikeEndedRef.current = true;
         handleEndChallenge('strikes', skippedResult);
         return;
       }
