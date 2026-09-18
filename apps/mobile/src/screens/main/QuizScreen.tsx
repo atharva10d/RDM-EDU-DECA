@@ -301,7 +301,8 @@ export const QuizScreen: React.FC<QuizScreenProps> = ({ navigation, route }) => 
       strikesRef.current = nextStrikes;
       setStrikes(nextStrikes);
       if (nextStrikes >= limitStrikes) {
-        setTimeout(() => handleEndChallenge('strikes'), 300);
+        handleEndChallenge('strikes', skippedResult);
+        return;
       }
     }
     if (currentIndex < questions.length - 1) {
