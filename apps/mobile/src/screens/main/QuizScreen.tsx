@@ -179,6 +179,7 @@ export const QuizScreen: React.FC<QuizScreenProps> = ({ navigation, route }) => 
     if (isSubmittingRef.current) return;
     isSubmittingRef.current = true;
     clearInterval(timerRef.current);
+    let completeSucceeded = false;
     try {
       let resultsSnapshot = resultsRef.current;
       if (pendingResult) {
@@ -213,6 +214,7 @@ export const QuizScreen: React.FC<QuizScreenProps> = ({ navigation, route }) => 
           results: resultsSnapshot,
         }),
       );
+      completeSucceeded = true;
       await progressService.loadProgress();
       const accuracy = questions.length > 0 ? Math.round((scoreSnapshot / questions.length) * 100) : 0;
       const nextLevel = response?.progress?.campaignLevel;
@@ -231,6 +233,9 @@ export const QuizScreen: React.FC<QuizScreenProps> = ({ navigation, route }) => 
         campaignLevelAtStart: targetLevel,
       });
     } catch (err: any) {
+      if (!completeSucceeded) {
+        isSubmittingRef.current = false;
+      }
       if (err instanceof EdudecaApiError && err.status === 401) {
         return;
       }
