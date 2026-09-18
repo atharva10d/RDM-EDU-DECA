@@ -66,11 +66,11 @@ export const QuizScreen: React.FC<QuizScreenProps> = ({ navigation, route }) => 
 
   const [timeLeft, setTimeLeft] = useState<number>(limitTime);
   const [pickedIndex, setPickedIndex] = useState<number | null>(null);
-  const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
   const [isLoadingQuestions, setIsLoadingQuestions] = useState<boolean>(true);
   const [loadError, setLoadError] = useState<string | null>(null);
 
   const timerRef = useRef<any>(null);
+  const isSubmittingRef = useRef<boolean>(false);
   const startTimeRef = useRef<number>(Date.now());
   const scoreRef = useRef<number>(0);
   const strikesRef = useRef<number>(0);
@@ -176,9 +176,9 @@ export const QuizScreen: React.FC<QuizScreenProps> = ({ navigation, route }) => 
     reason: 'won' | 'strikes' | 'time' | 'quit',
     pendingResult?: QuizResult,
   ) => {
+    if (isSubmittingRef.current) return;
+    isSubmittingRef.current = true;
     clearInterval(timerRef.current);
-    if (isSubmitting) return;
-    setIsSubmitting(true);
     try {
       let resultsSnapshot = resultsRef.current;
       if (pendingResult) {
@@ -244,8 +244,6 @@ export const QuizScreen: React.FC<QuizScreenProps> = ({ navigation, route }) => 
       } else {
         Alert.alert('Submission Error', err?.message || 'Failed to submit challenge results.');
       }
-    } finally {
-      setIsSubmitting(false);
     }
   };
 
