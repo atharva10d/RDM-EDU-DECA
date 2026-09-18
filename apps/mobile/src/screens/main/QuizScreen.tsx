@@ -215,10 +215,14 @@ export const QuizScreen: React.FC<QuizScreenProps> = ({ navigation, route }) => 
         }),
       );
       completeSucceeded = true;
-      await progressService.loadProgress();
+      try {
+        await progressService.loadProgress();
+      } catch (loadErr) {
+        console.warn('[QuizScreen] Failed to refresh progress after challenge complete:', loadErr);
+      }
       const accuracy = questions.length > 0 ? Math.round((scoreSnapshot / questions.length) * 100) : 0;
-      const nextLevel = response?.progress?.campaignLevel;
-      const xpEarned = response?.progress?.xp ?? scoreSnapshot * 10;
+      const nextLevel = response.progress?.campaignLevel;
+      const xpEarned = response.progress?.xp ?? scoreSnapshot * 10;
       navigation.replace('Results', {
         score: scoreSnapshot,
         total: questions.length,
@@ -233,9 +237,10 @@ export const QuizScreen: React.FC<QuizScreenProps> = ({ navigation, route }) => 
         campaignLevelAtStart: targetLevel,
       });
     } catch (err: any) {
-      if (!completeSucceeded) {
-        isSubmittingRef.current = false;
+      if (completeSucceeded) {
+        return;
       }
+      isSubmittingRef.current = false;
       if (err instanceof EdudecaApiError && err.status === 401) {
         return;
       }
