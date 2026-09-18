@@ -76,6 +76,8 @@ export const QuizScreen: React.FC<QuizScreenProps> = ({ navigation, route }) => 
   const strikesRef = useRef<number>(0);
   const resultsRef = useRef<QuizResult[]>([]);
   const strikeEndedRef = useRef<boolean>(false);
+  const timeEndedRef = useRef<boolean>(false);
+  const lastEndReasonRef = useRef<'won' | 'strikes' | 'time' | 'quit' | null>(null);
 
   const initChallenge = async () => {
     setIsLoadingQuestions(true);
@@ -115,6 +117,8 @@ export const QuizScreen: React.FC<QuizScreenProps> = ({ navigation, route }) => 
         strikesRef.current = 0;
         resultsRef.current = [];
         strikeEndedRef.current = false;
+        timeEndedRef.current = false;
+        lastEndReasonRef.current = null;
         setScore(0);
         setStrikes(0);
         setResults([]);
@@ -165,6 +169,7 @@ export const QuizScreen: React.FC<QuizScreenProps> = ({ navigation, route }) => 
       setTimeLeft((prev) => {
         if (prev <= 1) {
           clearInterval(timerRef.current);
+          timeEndedRef.current = true;
           handleEndChallenge('time');
           return 0;
         }
@@ -179,6 +184,7 @@ export const QuizScreen: React.FC<QuizScreenProps> = ({ navigation, route }) => 
     pendingResult?: QuizResult,
   ) => {
     if (isSubmittingRef.current) return;
+    lastEndReasonRef.current = reason;
     isSubmittingRef.current = true;
     clearInterval(timerRef.current);
     let completeSucceeded = false;
@@ -254,12 +260,23 @@ export const QuizScreen: React.FC<QuizScreenProps> = ({ navigation, route }) => 
       if (action.title !== 'Challenge Locked') {
         Alert.alert(action.title, action.message, [{ text: 'OK', onPress: () => navigation.navigate(action.navigate as any) }]);
       } else {
-        Alert.alert('Submission Error', err?.message || 'Failed to submit challenge results.');
+        const retryReason = lastEndReasonRef.current;
+        Alert.alert('Submission Error', err?.message || 'Failed to submit challenge results.', [
+          {
+            text: 'OK',
+            onPress: () => {
+              if (retryReason !== null) {
+                handleEndChallenge(retryReason);
+              }
+            },
+          },
+        ]);
       }
     }
   };
 
   const handlePickOption = (index: number) => {
+    if (isSubmittingRef.current || strikeEndedRef.current || timeEndedRef.current) return;
     if (pickedIndex !== null) return;
     setPickedIndex(index);
     const currentQ = questions[currentIndex];
@@ -287,8 +304,28 @@ export const QuizScreen: React.FC<QuizScreenProps> = ({ navigation, route }) => 
   };
 
   const handleNext = () => {
-    if (strikeEndedRef.current) return;
+    if (isSubmittingRef.current) return;
+    if (strikeEndedRef.current || timeEndedRef.current) {
+      const retryReason = lastEndReasonRef.current;
+      if (retryReason !== null) {
+        handleEndChallenge(retryReason);
+      }
+      return;
+    }
     const currentQ = questions[currentIndex];
+    const isLastQuestion = currentIndex >= questions.length - 1;
+    const currentAlreadyRecorded = resultsRef.current.some(
+      (result) => result.questionId === currentQ.id,
+    );
+    if (
+      isLastQuestion &&
+      currentAlreadyRecorded &&
+      lastEndReasonRef.current !== null &&
+      lastEndReasonRef.current === 'won'
+    ) {
+      handleEndChallenge(lastEndReasonRef.current);
+      return;
+    }
     const isSkipped = pickedIndex === null;
     let skippedResult: QuizResult | undefined;
     if (isSkipped) {
