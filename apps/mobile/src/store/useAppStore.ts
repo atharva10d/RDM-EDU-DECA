@@ -115,17 +115,7 @@ export const useAppStore = create<AppState>()(
           ...progress,
         })),
 
-      loginDevOrGuest: (userPartial) =>
-        set((state) => ({
-          isGuestOrDevAuthenticated: true,
-          user: { ...state.user, ...(userPartial || {}) },
-          ...(userPartial?.level !== undefined ? { level: userPartial.level } : {}),
-          ...(userPartial?.rdmBalance !== undefined ? { rdmBalance: userPartial.rdmBalance } : {}),
-          ...(userPartial?.streak !== undefined ? { streak: userPartial.streak } : {}),
-          ...(userPartial?.quizzesCompleted !== undefined
-            ? { quizzesCompleted: userPartial.quizzesCompleted }
-            : {}),
-        })),
+      loginDevOrGuest: () => undefined,
 
       signOut: () =>
         set({

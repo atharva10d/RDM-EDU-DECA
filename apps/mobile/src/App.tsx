@@ -23,6 +23,8 @@ export default function App() {
           ...(googleName ? { name: googleName } : {}),
           id: s.user.id,
         });
+      } else {
+        useAppStore.getState().resetState();
       }
     };
 

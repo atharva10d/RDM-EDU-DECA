@@ -13,7 +13,6 @@ import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { AuthStackParamList } from '../../navigation/types';
 import { colors, typography, borderRadius, Button, StatChip } from '@edudeca/ui';
 import { TICKER_ITEMS } from '../../utils/mockData';
-import { useAppStore } from '../../store/useAppStore';
 import { Bell, Zap } from 'lucide-react-native';
 
 type HomeScreenNavigationProp = NativeStackNavigationProp<AuthStackParamList, 'Home'>;
@@ -23,8 +22,6 @@ interface HomeScreenProps {
 }
 
 export const HomeScreen: React.FC<HomeScreenProps> = ({ navigation }) => {
-  const user = useAppStore((state) => state.user);
-  const loginDevOrGuest = useAppStore((state) => state.loginDevOrGuest);
   const [studentsCount, setStudentsCount] = useState(0);
   const [schoolsCount, setSchoolsCount] = useState(0);
   const [statesCount, setStatesCount] = useState(0);
@@ -173,13 +170,7 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({ navigation }) => {
         {/* Call to Action Button */}
         <Button
           title="⚡ Start Free Challenge →"
-          onPress={() => {
-            if (user.institution && user.institution.trim().length > 0) {
-              loginDevOrGuest(user);
-            } else {
-              navigation.navigate('PickPath');
-            }
-          }}
+          onPress={() => navigation.navigate('PickPath')}
           variant="primary"
           style={styles.ctaButton}
         />
@@ -190,13 +181,7 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({ navigation }) => {
             Already competing?{' '}
             <Text
               style={styles.signinLinkAction}
-              onPress={() => {
-                if (user.institution && user.institution.trim().length > 0) {
-                  loginDevOrGuest(user);
-                } else {
-                  navigation.navigate('SignIn');
-                }
-              }}
+              onPress={() => navigation.navigate('SignIn')}
             >
               Sign in
             </Text>

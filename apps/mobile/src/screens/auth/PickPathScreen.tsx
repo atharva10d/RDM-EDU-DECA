@@ -22,9 +22,6 @@ interface PickPathScreenProps {
 export const PickPathScreen: React.FC<PickPathScreenProps> = ({ navigation }) => {
   const selectedTrack = useAppStore((state) => state.selectedTrack);
   const setSelectedTrack = useAppStore((state) => state.setSelectedTrack);
-  const isGuestOrDevAuthenticated = useAppStore(
-    (state) => state.isGuestOrDevAuthenticated
-  );
   const [localTrack, setLocalTrack] = useState<'A' | 'B'>(selectedTrack || 'A');
 
   const handleSelectTrack = (track: 'A' | 'B') => {
@@ -34,15 +31,7 @@ export const PickPathScreen: React.FC<PickPathScreenProps> = ({ navigation }) =>
 
   const handleContinue = () => {
     setSelectedTrack(localTrack);
-    if (isGuestOrDevAuthenticated) {
-      if (navigation?.canGoBack?.()) {
-        navigation.goBack();
-      } else {
-        navigation.navigate('Dashboard');
-      }
-    } else {
-      navigation.navigate('SignIn');
-    }
+    navigation.navigate('SignIn');
   };
 
   return (

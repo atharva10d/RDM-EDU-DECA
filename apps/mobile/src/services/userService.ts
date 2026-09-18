@@ -1,6 +1,7 @@
 import { supabase } from '../lib/supabase';
 import { UserProfile } from '@edudeca/types';
 import { edudecaApi } from './edudecaApi';
+import { toEdudecaProfileRow } from './studentLoop/profileColumns';
 
 export const userService = {
   /**
@@ -39,13 +40,13 @@ export const userService = {
       email: profile.email || '',
       classGrade: profile.class_level === 12 ? 'Class 12' : 'Class 11',
       scienceStream: true,
-      institution: profile.institution || '',
+      institution: profile.institution_name || '',
       state: profile.state || '',
       city: profile.city || '',
       level4Consent: profile.level4_consent ?? true,
       selectedTrack: (profile.selected_track as any) || 'A',
-      level: progress.campaign_level ?? profile.level ?? 0,
-      streak: progress.streak ?? 0,
+      level: progress.campaignLevel ?? progress.campaign_level ?? profile.level ?? 0,
+      streak: progress.streakDays ?? progress.streak ?? 0,
       rdmBalance: progress.xp ?? 0,
       quizzesCompleted: progress.quizzes_completed ?? 0,
     };
@@ -64,22 +65,11 @@ export const userService = {
       uid = sessionData.session?.user?.id;
     }
 
-    // Map our internal field names to Supabase column names
-    const updateData: Record<string, any> = {};
-    if (profileUpdate.name) updateData.full_name = profileUpdate.name;
-    if (profileUpdate.email) updateData.email = profileUpdate.email;
-    if (profileUpdate.classGrade) {
-      updateData.class_level = profileUpdate.classGrade === 'Class 12' ? 12 : 11;
-    }
-    if (profileUpdate.institution) updateData.institution = profileUpdate.institution;
-    if (profileUpdate.state) updateData.state = profileUpdate.state;
-    if (profileUpdate.city) updateData.city = profileUpdate.city;
-
     if (uid) {
       try {
         await supabase
           .from('edudeca_profiles')
-          .upsert({ id: uid, ...updateData }, { onConflict: 'id' });
+          .upsert({ id: uid, ...toEdudecaProfileRow(profileUpdate) }, { onConflict: 'id' });
       } catch (_e) {
         // Ignore if RLS restrictions apply
       }

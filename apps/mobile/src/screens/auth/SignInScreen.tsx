@@ -21,22 +21,9 @@ import { useAppStore } from '../../store/useAppStore';
 import { ChevronDown, Check, AlertTriangle, Search, X, Lock } from 'lucide-react-native';
 import Svg, { Path } from 'react-native-svg';
 import { supabase } from '../../lib/supabase';
+import { signInWithGoogle } from '../../lib/googleAuth';
 import { progressService } from '../../services/progressService';
-// Safely load GoogleSignin in environments where the native binary is present
-let GoogleSignin: any = null;
-try {
-  // eslint-disable-next-line @typescript-eslint/no-var-requires
-  const gModule = require('@react-native-google-signin/google-signin');
-  GoogleSignin = gModule.GoogleSignin;
-  if (GoogleSignin?.configure) {
-    GoogleSignin.configure({
-      webClientId: '167530443868-kniil90rorooo9i3vu80sqmtlo3sqqi2.apps.googleusercontent.com',
-      offlineAccess: false,
-    });
-  }
-} catch (_err) {
-  // Handled gracefully in standard Expo Go
-}
+import { userService } from '../../services/userService';
 
 type SignInScreenNavigationProp = NativeStackNavigationProp<AuthStackParamList, 'SignIn'>;
 
@@ -47,10 +34,7 @@ interface SignInScreenProps {
 export const SignInScreen: React.FC<SignInScreenProps> = ({ navigation }) => {
   const storedUser = useAppStore((state) => state.user);
   const setUser = useAppStore((state) => state.setUser);
-  const resetState = useAppStore((state) => state.resetState);
-  const loginDevOrGuest = useAppStore((state) => state.loginDevOrGuest);
   const selectedTrack = useAppStore((state) => state.selectedTrack);
-  const setUserProfile = useAppStore((state) => state.setUserProfile);
 
   // Form State: Pre-populate with stored details if returning
   const [fullName, setFullName] = useState<string>(
@@ -204,88 +188,23 @@ export const SignInScreen: React.FC<SignInScreenProps> = ({ navigation }) => {
     setIsSubmitting(true);
 
     const gradeLabel = classGrade === 'XI' ? 'Class 11' : 'Class 12';
-    const classLevel = classGrade === 'XI' ? 11 : 12; // Integer for Supabase
     let studentName = fullName.trim() || storedUser.name || 'Whiz Student';
     let studentEmail = email.trim().toLowerCase() || storedUser.email;
-    let session = null;
 
     try {
-      // 1. Native Google popup appears (no browser / no website)
-      await GoogleSignin.hasPlayServices({ showPlayServicesUpdateDialog: true });
-      const response: any = await GoogleSignin.signIn();
-
-      // Extract the dynamic idToken
-      const idToken = response.data?.idToken || response.idToken;
-      if (!idToken) throw new Error('No ID token returned from Google');
-
-      // 2. Token is sent directly to Supabase
-      const { data, error } = await supabase.auth.signInWithIdToken({
-        provider: 'google',
-        token: idToken,
-      });
-
-      if (error) throw error;
-      session = data.session;
-      console.log('Login successful! Supabase session:', data.session);
-
-        await progressService.loadProgress();
-        const store = useAppStore.getState();
-        if (!store.disciplines || store.disciplines.length < 10) {
-          navigation.navigate('PickDisciplines' as never);
-        }
-    } catch (err: any) {
-      console.error('Google Sign-In failed:', err);
-      setIsSubmitting(false);
-
-      if (err?.code === 'SIGN_IN_CANCELLED' || err?.code === '12501') {
-        return;
+      const session = await signInWithGoogle();
+      if (!session?.user) {
+        throw new Error('Google Sign-In did not create a session.');
       }
 
-      Alert.alert(
-        'Google Sign-In',
-        err?.message?.includes('null')
-          ? 'True Native Sign-In requires an Android Development Build or APK to display the native account selector sheet without opening a browser.'
-          : err?.message || 'Native Google Sign-In failed.'
-      );
-      return;
-    }
+      studentName =
+        session.user.user_metadata?.full_name ||
+        session.user.user_metadata?.name ||
+        studentName;
+      studentEmail = session.user.email || studentEmail;
+      setEmail(studentEmail);
+      setFullName(studentName);
 
-    try {
-      // Refresh or check session
-      if (!session) {
-        const { data: sessionData } = await supabase.auth.getSession();
-        session = sessionData.session;
-      }
-
-      if (session?.user) {
-        studentName = session.user.user_metadata?.full_name || session.user.user_metadata?.name || studentName;
-        studentEmail = session.user.email || studentEmail;
-        setEmail(studentEmail);
-        setFullName(studentName);
-
-        // Upsert to edudeca_profiles with class_level as integer
-        const { error: upsertError } = await supabase
-          .from('edudeca_profiles')
-          .upsert(
-            {
-              id: session.user.id,
-              full_name: studentName,
-              email: studentEmail,
-              class_level: classLevel,
-              institution: institution.trim(),
-              state: selectedState,
-              city: selectedCity,
-            },
-            { onConflict: 'id' }
-          );
-
-        if (upsertError) {
-          console.log('[Supabase] Profile upsert notice:', upsertError.message);
-        }
-      }
-    } catch (err: any) {
-      console.log('[Supabase Sync Notice]:', err?.message || err);
-    } finally {
       const profileData = {
         name: studentName,
         email: studentEmail,
@@ -302,10 +221,24 @@ export const SignInScreen: React.FC<SignInScreenProps> = ({ navigation }) => {
         quizzesCompleted: storedUser.quizzesCompleted || 0,
       };
 
-      // 1. Immediately authenticate and save to local Zustand store
+      await userService.updateUserProfile(profileData, session.user.id);
+      await progressService.loadProgress();
       setUser(profileData);
-      loginDevOrGuest(profileData);
 
+      const store = useAppStore.getState();
+      if (!store.disciplines || store.disciplines.length < 10) {
+        navigation.navigate('PickDisciplines' as never);
+      }
+    } catch (err: any) {
+      console.error('Google Sign-In failed:', err);
+      setIsSubmitting(false);
+
+      if (err?.code === 'SIGN_IN_CANCELLED' || err?.code === '12501') {
+        return;
+      }
+
+      Alert.alert('Google Sign-In', err?.message || 'Google Sign-In failed.');
+    } finally {
       setIsSubmitting(false);
     }
   };
@@ -339,27 +272,6 @@ export const SignInScreen: React.FC<SignInScreenProps> = ({ navigation }) => {
         <Text style={styles.signInSub}>
           Enter your details and continue with Google to join EduDeca.
         </Text>
-
-        {/* 1-Tap Direct Login for Returning Users */}
-        {storedUser.institution ? (
-          <TouchableOpacity
-            activeOpacity={0.85}
-            style={styles.returningCard}
-            onPress={() => {
-              loginDevOrGuest(storedUser);
-            }}
-          >
-            <View style={styles.returningLeft}>
-              <Text style={styles.returningTitle}>ðŸ‘‹ Welcome Back, {storedUser.name || 'Champion'}!</Text>
-              <Text style={styles.returningSub} numberOfLines={1}>
-                {storedUser.classGrade} Â· {storedUser.institution}
-              </Text>
-            </View>
-            <View style={styles.returningBtn}>
-              <Text style={styles.returningBtnText}>Direct Login â†’</Text>
-            </View>
-          </TouchableOpacity>
-        ) : null}
 
         {/* Field 0: Full Name */}
         <View style={styles.field}>

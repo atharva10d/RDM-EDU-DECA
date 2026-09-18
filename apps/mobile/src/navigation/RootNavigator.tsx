@@ -7,6 +7,8 @@ import { MainTabNavigator } from './MainTabNavigator';
 import { colors } from '@edudeca/ui';
 import { useAppStore } from '../store/useAppStore';
 import { Session } from '@supabase/supabase-js';
+import { isMainAuthenticated } from './isMainAuthenticated';
+import { isProfileGateComplete } from '../services/studentLoop/profileGate';
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
 
@@ -28,20 +30,14 @@ interface RootNavigatorProps {
 }
 
 export const RootNavigator: React.FC<RootNavigatorProps> = ({ session }) => {
-  const isGuestOrDevAuthenticated = useAppStore(
-    (state) => state.isGuestOrDevAuthenticated
-  );
   const user = useAppStore((state) => state.user);
-
-  const hasCompletedProfile = Boolean(
-    user?.institution && user.institution.trim().length > 0 && user?.state && user?.city
-  );
-
-  // User is authenticated if they have a Supabase session OR completed profile locally
   const disciplines = useAppStore((state) => state.disciplines);
-  const isAuthenticated = Boolean(
-    (session && disciplines && disciplines.length === 10) || isGuestOrDevAuthenticated || hasCompletedProfile
-  );
+  const isAuthenticated = isMainAuthenticated({
+    hasSession: Boolean(session),
+    disciplineCount: Array.isArray(disciplines) ? disciplines.length : 0,
+    profileComplete: isProfileGateComplete(user),
+    isGuest: false,
+  });
 
   return (
     <NavigationContainer theme={AppNavTheme}>
