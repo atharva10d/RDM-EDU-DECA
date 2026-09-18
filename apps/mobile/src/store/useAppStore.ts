@@ -1,4 +1,4 @@
-import { create } from 'zustand';
+﻿import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
 import * as SecureStore from 'expo-secure-store';
 import { TrackType, UserProfile, ReferredContact } from '@edudeca/types';
@@ -62,6 +62,14 @@ interface AppState {
   setReferredContacts: (contacts: ReferredContact[]) => void;
   addReferredContact: (contact: ReferredContact) => void;
 
+  // Daily Challenge Progress State
+  campaignLevel: number;
+  todayCompleted: boolean;
+  freeZoneComplete: boolean;
+  disciplines: string[];
+  trialsRemaining: number;
+  setProgress: (progress: Partial<AppState>) => void;
+
   // Reset
   resetState: () => void;
 }
@@ -95,6 +103,17 @@ export const useAppStore = create<AppState>()(
       rdmBalance: 0,
       quizzesCompleted: 0,
       referredContacts: [],
+      campaignLevel: 1,
+      todayCompleted: false,
+      freeZoneComplete: false,
+      disciplines: [],
+      trialsRemaining: 10,
+
+      setProgress: (progress) =>
+        set((state) => ({
+          ...state,
+          ...progress,
+        })),
 
       loginDevOrGuest: (userPartial) =>
         set((state) => ({
@@ -118,6 +137,11 @@ export const useAppStore = create<AppState>()(
           rdmBalance: 0,
           quizzesCompleted: 0,
           referredContacts: [],
+          campaignLevel: 1,
+          todayCompleted: false,
+          freeZoneComplete: false,
+          disciplines: [],
+          trialsRemaining: 10,
         }),
 
       setUser: (userPartial) =>
@@ -218,6 +242,11 @@ export const useAppStore = create<AppState>()(
           rdmBalance: 0,
           quizzesCompleted: 0,
           referredContacts: [],
+          campaignLevel: 1,
+          todayCompleted: false,
+          freeZoneComplete: false,
+          disciplines: [],
+          trialsRemaining: 10,
         }),
     }),
     {
@@ -226,3 +255,4 @@ export const useAppStore = create<AppState>()(
     }
   )
 );
+

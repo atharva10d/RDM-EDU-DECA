@@ -1,9 +1,10 @@
-import { NavigatorScreenParams } from '@react-navigation/native';
+﻿import { NavigatorScreenParams } from '@react-navigation/native';
 
 export type AuthStackParamList = {
   Home: undefined;
   PickPath: undefined;
   SignIn: undefined;
+  PickDisciplines: undefined;
 };
 
 export type DashboardStackParamList = {
@@ -16,6 +17,11 @@ export type DashboardStackParamList = {
     accuracy: number;
     leveledUp?: boolean;
     newLevel?: number;
+    reason?: 'won' | 'strikes' | 'time' | 'quit';
+    correct?: number;
+    strikes?: number;
+    xpEarned?: number;
+    campaignLevelAtStart?: number;
   };
   Refer: undefined;
   LevelPath: undefined;
@@ -37,3 +43,5 @@ export type RootStackParamList = {
   Auth: NavigatorScreenParams<AuthStackParamList>;
   Main: NavigatorScreenParams<MainTabParamList>;
 };
+
+

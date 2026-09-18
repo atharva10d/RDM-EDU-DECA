@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect } from 'react';
+﻿import React, { useState, useMemo, useEffect } from 'react';
 import {
   View,
   Text,
@@ -21,6 +21,7 @@ import { useAppStore } from '../../store/useAppStore';
 import { ChevronDown, Check, AlertTriangle, Search, X, Lock } from 'lucide-react-native';
 import Svg, { Path } from 'react-native-svg';
 import { supabase } from '../../lib/supabase';
+import { progressService } from '../../services/progressService';
 // Safely load GoogleSignin in environments where the native binary is present
 let GoogleSignin: any = null;
 try {
@@ -226,6 +227,12 @@ export const SignInScreen: React.FC<SignInScreenProps> = ({ navigation }) => {
       if (error) throw error;
       session = data.session;
       console.log('Login successful! Supabase session:', data.session);
+
+        await progressService.loadProgress();
+        const store = useAppStore.getState();
+        if (!store.disciplines || store.disciplines.length < 10) {
+          navigation.navigate('PickDisciplines' as never);
+        }
     } catch (err: any) {
       console.error('Google Sign-In failed:', err);
       setIsSubmitting(false);
@@ -321,14 +328,14 @@ export const SignInScreen: React.FC<SignInScreenProps> = ({ navigation }) => {
 
         {/* Final Step Badge & Header */}
         <View style={styles.finalBadge}>
-          <Text style={styles.finalBadgeText}>🏁 FINAL STEP · SIGN IN</Text>
+          <Text style={styles.finalBadgeText}>ðŸ FINAL STEP Â· SIGN IN</Text>
         </View>
 
         <Text style={styles.whizLine}>
-          🏆 Continue your journey to become a chosen Whiz360
+          ðŸ† Continue your journey to become a chosen Whiz360
         </Text>
 
-        <Text style={styles.signInH1}>Start Today …</Text>
+        <Text style={styles.signInH1}>Start Today â€¦</Text>
         <Text style={styles.signInSub}>
           Enter your details and continue with Google to join EduDeca.
         </Text>
@@ -343,13 +350,13 @@ export const SignInScreen: React.FC<SignInScreenProps> = ({ navigation }) => {
             }}
           >
             <View style={styles.returningLeft}>
-              <Text style={styles.returningTitle}>👋 Welcome Back, {storedUser.name || 'Champion'}!</Text>
+              <Text style={styles.returningTitle}>ðŸ‘‹ Welcome Back, {storedUser.name || 'Champion'}!</Text>
               <Text style={styles.returningSub} numberOfLines={1}>
-                {storedUser.classGrade} · {storedUser.institution}
+                {storedUser.classGrade} Â· {storedUser.institution}
               </Text>
             </View>
             <View style={styles.returningBtn}>
-              <Text style={styles.returningBtnText}>Direct Login →</Text>
+              <Text style={styles.returningBtnText}>Direct Login â†’</Text>
             </View>
           </TouchableOpacity>
         ) : null}
@@ -501,7 +508,7 @@ export const SignInScreen: React.FC<SignInScreenProps> = ({ navigation }) => {
             <View style={styles.streamWarn}>
               <AlertTriangle size={14} color="#FFAFA0" />
               <Text style={styles.streamWarnText}>
-                ⚠️ Only for Science Stream students.
+                âš ï¸ Only for Science Stream students.
               </Text>
             </View>
           )}
@@ -694,7 +701,7 @@ export const SignInScreen: React.FC<SignInScreenProps> = ({ navigation }) => {
           <View style={styles.modalPanel}>
             <View style={styles.modalHeaderRow}>
               <Text style={styles.modalTitle}>
-                Select District · {selectedState}
+                Select District Â· {selectedState}
               </Text>
               <TouchableOpacity onPress={() => setShowCityModal(false)}>
                 <X size={20} color={colors.text} />
@@ -1120,3 +1127,7 @@ const styles = StyleSheet.create({
     color: '#04140E',
   },
 });
+
+
+
+

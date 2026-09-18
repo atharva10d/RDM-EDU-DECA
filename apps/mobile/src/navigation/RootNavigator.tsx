@@ -1,4 +1,4 @@
-import React from 'react';
+﻿import React from 'react';
 import { NavigationContainer, DefaultTheme } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { RootStackParamList } from './types';
@@ -38,8 +38,9 @@ export const RootNavigator: React.FC<RootNavigatorProps> = ({ session }) => {
   );
 
   // User is authenticated if they have a Supabase session OR completed profile locally
+  const disciplines = useAppStore((state) => state.disciplines);
   const isAuthenticated = Boolean(
-    session || isGuestOrDevAuthenticated || hasCompletedProfile
+    (session && disciplines && disciplines.length === 10) || isGuestOrDevAuthenticated || hasCompletedProfile
   );
 
   return (
@@ -59,3 +60,4 @@ export const RootNavigator: React.FC<RootNavigatorProps> = ({ session }) => {
     </NavigationContainer>
   );
 };
+

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+﻿import React, { useState, useEffect, useCallback } from 'react';
 import {
   View,
   Text,
@@ -17,6 +17,7 @@ import { CircularProgressRing } from '../../components/CircularProgressRing';
 import { BurgerDrawer } from '../../components/BurgerDrawer';
 import { Bell, Menu, Zap, User } from 'lucide-react-native';
 import { userService, setCurrentUserId } from '../../services';
+import { progressService } from '../../services/progressService';
 
 type DashboardScreenNavigationProp = NativeStackNavigationProp<DashboardStackParamList, 'Dashboard'>;
 
@@ -35,6 +36,10 @@ export const DashboardScreen: React.FC<DashboardScreenProps> = ({ navigation }) 
   const quizzesCompleted = useAppStore((state) => state.quizzesCompleted);
   const selectedTrack = useAppStore((state) => state.selectedTrack);
   const setUserProfile = useAppStore((state) => state.setUserProfile);
+  const campaignLevel = useAppStore((state) => state.campaignLevel);
+  const todayCompleted = useAppStore((state) => state.todayCompleted);
+  const freeZoneComplete = useAppStore((state) => state.freeZoneComplete);
+  const trialsRemaining = useAppStore((state) => state.trialsRemaining);
 
   // Sync API state on mount and pull-to-refresh
   const loadUserData = useCallback(async () => {
@@ -42,6 +47,7 @@ export const DashboardScreen: React.FC<DashboardScreenProps> = ({ navigation }) 
       if (user?.id) {
         setCurrentUserId(user.id);
       }
+      await progressService.loadProgress();
       const profile = await userService.fetchCurrentUser(user?.id);
       if (profile) {
         setUserProfile(profile);
@@ -84,14 +90,21 @@ export const DashboardScreen: React.FC<DashboardScreenProps> = ({ navigation }) 
     }
   };
 
+  
+  const getLevelLimits = (lvl: number) => {
+    if (lvl === 1) return { time: 5, strikes: 5 };
+    if (lvl === 2) return { time: 10, strikes: 7 };
+    return { time: 20, strikes: 10 };
+  };
+  const limits = getLevelLimits(campaignLevel);
   const zoneTitle =
     level === 0
-      ? 'Level 0 · Not started'
+      ? 'Level 0 Â· Not started'
       : level <= 3
-      ? `Level ${level} · Free Zone`
+      ? `Level ${level} Â· Free Zone`
       : level <= 6
-      ? `Level ${level} · Proctored Zone`
-      : `Level ${level} · Metro Finals`;
+      ? `Level ${level} Â· Proctored Zone`
+      : `Level ${level} Â· Metro Finals`;
 
   return (
     <SafeAreaView style={styles.safeArea}>
@@ -142,64 +155,59 @@ export const DashboardScreen: React.FC<DashboardScreenProps> = ({ navigation }) 
         {/* Level Card with SVG Circular Progress Ring */}
         <View style={styles.levelCard}>
           <View style={styles.levelRow}>
-            <CircularProgressRing level={level} size={76} strokeWidth={7} />
+            <CircularProgressRing level={campaignLevel} size={76} strokeWidth={7} />
             <View style={styles.levelInfo}>
               <Text style={styles.levelTitle}>{zoneTitle}</Text>
               <View style={styles.levelBadges}>
-                <View style={styles.badgeStreak}>
+                            <View style={styles.badgeStreak}>
                   <Text style={styles.badgeStreakText}>
-                    🔥 {streak} day streak
+                    {limits.time} Min Timer
                   </Text>
                 </View>
                 <View style={styles.badgeRank}>
                   <Text style={styles.badgeRankText}>
-                    🥇 Rank #4,821
+                    {limits.strikes} Strikes Max
                   </Text>
                 </View>
               </View>
             </View>
           </View>
+          
+          <Text style={{ fontSize: 13, color: colors.muted, textAlign: 'center', marginVertical: 8, fontFamily: typography.fontFamily.medium }}>
+            {trialsRemaining} attempts left today
+          </Text>
 
-          {/* Quick Action Button in Level Card - Starts 10Q challenge immediately */}
-          <TouchableOpacity
-            activeOpacity={0.85}
-            style={styles.startLevelBtn}
-            onPress={() =>
-              navigation.navigate('Quiz', {
-                quizLength: 10,
-                level: Math.max(1, level),
-              })
-            }
-          >
-            <Text style={styles.startLevelBtnText}>
-              ⚡ Start Level {Math.max(1, level)} Challenge →
-            </Text>
-          </TouchableOpacity>
-        </View>
-
-        {/* RDM & Quizzes Completed Chip Row */}
-        <View style={styles.rdmChipRow}>
-          <View style={styles.rdmChip}>
-            <View style={styles.rdmCoinGold}>
-              <Text style={styles.rdmCoinGoldText}>R</Text>
-            </View>
-            <View>
-              <Text style={styles.rdmValue}>
-                {rdmBalance.toLocaleString('en-IN')}
+          {freeZoneComplete ? (
+            <TouchableOpacity
+              activeOpacity={0.85}
+              style={styles.startLevelBtn}
+              onPress={() => alert("Payment isn't live yet. You'll be notified when Level 4 opens.")}
+            >
+              <Text style={styles.startLevelBtnText}>
+                o" Unlock Level 4 +' Priority Access
               </Text>
-              <Text style={styles.rdmLabel}>RDM balance</Text>
+            </TouchableOpacity>
+          ) : todayCompleted ? (
+            <View style={[styles.startLevelBtn, { backgroundColor: colors.border }]}>
+              <Text style={[styles.startLevelBtnText, { color: colors.mutedDim }]}>
+                o" Come back tomorrow +' Level {campaignLevel + 1} unlocked
+              </Text>
             </View>
-          </View>
-
-          <View style={styles.rdmChip}>
-            <View style={styles.rdmCoinTeal}>
-              <Text style={styles.rdmCoinTealText}>✓</Text>
-            </View>
-            <View>
-              <Text style={styles.rdmValue}>{quizzesCompleted}</Text>
-              <Text style={styles.rdmLabel}>Quizzes done</Text>
-            </View>
-          </View>
+          ) : (
+            <TouchableOpacity
+              activeOpacity={0.85}
+              style={styles.startLevelBtn}
+              onPress={() =>
+                navigation.navigate('Quiz', {
+                  level: campaignLevel,
+                })
+              }
+            >
+              <Text style={styles.startLevelBtnText}>
+                s Start Level {campaignLevel} Challenge +'
+              </Text>
+            </TouchableOpacity>
+          )}
         </View>
 
         {/* 10 Disciplines Section Head */}
@@ -209,7 +217,7 @@ export const DashboardScreen: React.FC<DashboardScreenProps> = ({ navigation }) 
             activeOpacity={0.7}
             onPress={() => navigation.navigate('LevelPath')}
           >
-            <Text style={styles.sectionHeadSee}>See all →</Text>
+            <Text style={styles.sectionHeadSee}>See all â†’</Text>
           </TouchableOpacity>
         </View>
 
@@ -490,3 +498,4 @@ const styles = StyleSheet.create({
     marginTop: 2,
   },
 });
+
