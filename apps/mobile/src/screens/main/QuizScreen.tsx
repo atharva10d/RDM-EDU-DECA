@@ -17,8 +17,10 @@ import { DashboardStackParamList } from '../../navigation/types';
 import { colors, typography, borderRadius, Button } from '@edudeca/ui';
 import { ArrowLeft } from 'lucide-react-native';
 import { useAppStore } from '../../store/useAppStore';
-import { edudecaApi } from '../../services/edudecaApi';
+import { edudecaApi, EdudecaApiError } from '../../services/edudecaApi';
 import { progressService } from '../../services/progressService';
+import { buildChallengeCompletePayload } from '../../services/studentLoop/challengeCompletePayload';
+import { mapChallengeQuestion } from '../../services/studentLoop/mapChallengeQuestion';
 import { getGateErrorAction } from '../../utils/gateErrors';
 
 type QuizScreenNavigationProp = NativeStackNavigationProp<DashboardStackParamList, 'Quiz'>;
@@ -38,21 +40,6 @@ interface QuizQuestion {
   options: string[];
   correctIndex: number;
 }
-
-const DISCIPLINE_MAP: Record<string, { tag: string; color: string }> = {
-  phy: { tag: 'PHYSICS', color: 'teal' },
-  che: { tag: 'CHEMISTRY', color: 'amber' },
-  mat: { tag: 'MATHS', color: 'purple' },
-  amat: { tag: 'APPLIED MATH', color: 'blue' },
-  bio: { tag: 'BIOLOGY', color: 'pink' },
-  biotech: { tag: 'BIOTECHNOLOGY', color: 'teal' },
-  ent: { tag: 'ENTREPRENEURSHIP', color: 'gold' },
-  eng: { tag: 'VERBAL', color: 'blue' },
-  eco: { tag: 'QUANTITATIVE', color: 'amber' },
-  log: { tag: 'ANALYTICAL', color: 'purple' },
-  gk: { tag: 'GK', color: 'teal' },
-  fin: { tag: 'FINLIT', color: 'gold' },
-};
 
 export const QuizScreen: React.FC<QuizScreenProps> = ({ navigation, route }) => {
   const targetLevel = route.params?.level || 1;
@@ -83,7 +70,14 @@ export const QuizScreen: React.FC<QuizScreenProps> = ({ navigation, route }) => 
       try {
         await edudecaApi.getChallengeAvailability();
       } catch (err: any) {
-        const errCode = err?.code || err?.reason || err?.message || '';
+        if (err instanceof EdudecaApiError && err.status === 401) {
+          setIsLoadingQuestions(false);
+          return;
+        }
+        const errCode =
+          err instanceof EdudecaApiError
+            ? err.code || err.message
+            : err?.code || err?.reason || err?.message || '';
         const action = getGateErrorAction(errCode);
         Alert.alert(action.title, action.message, [{ text: 'OK', onPress: () => navigation.navigate(action.navigate as any) }]);
         setIsLoadingQuestions(false);
@@ -92,19 +86,15 @@ export const QuizScreen: React.FC<QuizScreenProps> = ({ navigation, route }) => 
 
       const res = await edudecaApi.getChallengeQuestions(targetLevel);
       if (res.questions && res.questions.length > 0) {
-        const mapped: QuizQuestion[] = res.questions.map((q: any) => {
-          const discKey = (q.discipline || '').toLowerCase();
-          const mapping = DISCIPLINE_MAP[discKey] || { tag: q.discipline || 'UNKNOWN', color: 'teal' };
-          return {
-            id: q.id,
-            discipline: q.discipline || '',
-            tag: mapping.tag,
-            color: mapping.color,
-            q: q.question || q.q || q.title || q.text || q.content || JSON.stringify(q),
-            options: q.options || q.o || [],
-            correctIndex: q.correct_index ?? q.correctIndex ?? 0,
-          };
-        });
+        const mapped: QuizQuestion[] = res.questions.map(mapChallengeQuestion).map((question) => ({
+          id: question.id,
+          discipline: question.subjectId,
+          tag: question.tag,
+          color: question.color,
+          q: question.q,
+          options: question.options,
+          correctIndex: question.correctIndex,
+        }));
         setQuestions(mapped);
         setCurrentIndex(0);
         setScore(0);
@@ -117,7 +107,13 @@ export const QuizScreen: React.FC<QuizScreenProps> = ({ navigation, route }) => 
         setLoadError('No questions available for this level. Please try again later.');
       }
     } catch (err: any) {
-      const errCode = err?.code || err?.reason || err?.message || '';
+      if (err instanceof EdudecaApiError && err.status === 401) {
+        return;
+      }
+      const errCode =
+        err instanceof EdudecaApiError
+          ? err.code || err.message
+          : err?.code || err?.reason || err?.message || '';
       const action = getGateErrorAction(errCode);
       if (action.title !== 'Challenge Locked') {
         Alert.alert(action.title, action.message, [{ text: 'OK', onPress: () => navigation.navigate(action.navigate as any) }]);
@@ -153,36 +149,46 @@ export const QuizScreen: React.FC<QuizScreenProps> = ({ navigation, route }) => 
     if (isSubmitting) return;
     setIsSubmitting(true);
     try {
-      const timeTaken = Math.round((Date.now() - startTimeRef.current) / 1000);
-      const response = await edudecaApi.completeChallenge({
-        level: targetLevel,
-        score,
-        total: questions.length,
-        timeTaken,
-        // Extended spec fields (backend accepts via [key: string]: any)
-        reason,
-        correct: score,
-        campaignLevelAtStart: targetLevel,
-        strikes,
-        results,
-      });
+      const response = await edudecaApi.completeChallenge(
+        buildChallengeCompletePayload({
+          reason,
+          correct: score,
+          total: questions.length,
+          campaignLevelAtStart: targetLevel,
+          strikes,
+          results: results.map((row: any) => ({
+            questionId: String(row.questionId ?? row.id ?? ''),
+            subjectId: String(row.subjectId ?? row.discipline ?? ''),
+            isCorrect: Boolean(row.isCorrect),
+            skipped: Boolean(row.skipped),
+          })),
+        }),
+      );
       await progressService.loadProgress();
       const accuracy = questions.length > 0 ? Math.round((score / questions.length) * 100) : 0;
+      const nextLevel = response?.progress?.campaignLevel;
+      const xpEarned = response?.progress?.xp ?? score * 10;
       navigation.replace('Results', {
         score,
         total: questions.length,
-        earnedRdm: response?.xp_earned ?? score * 10,
+        earnedRdm: xpEarned,
         accuracy,
-        leveledUp: response?.leveled_up ?? false,
-        newLevel: response?.new_level,
+        leveledUp: Boolean(nextLevel && nextLevel > targetLevel),
+        newLevel: nextLevel,
         reason,
         correct: score,
         strikes,
-        xpEarned: response?.xp_earned ?? score * 10,
+        xpEarned,
         campaignLevelAtStart: targetLevel,
       });
     } catch (err: any) {
-      const errCode = err?.code || err?.reason || err?.message || '';
+      if (err instanceof EdudecaApiError && err.status === 401) {
+        return;
+      }
+      const errCode =
+        err instanceof EdudecaApiError
+          ? err.code || err.message
+          : err?.code || err?.reason || err?.message || '';
       const action = getGateErrorAction(errCode);
       if (action.title !== 'Challenge Locked') {
         Alert.alert(action.title, action.message, [{ text: 'OK', onPress: () => navigation.navigate(action.navigate as any) }]);
