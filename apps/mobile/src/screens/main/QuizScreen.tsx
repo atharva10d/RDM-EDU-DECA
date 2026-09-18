@@ -19,7 +19,10 @@ import { ArrowLeft } from 'lucide-react-native';
 import { useAppStore } from '../../store/useAppStore';
 import { edudecaApi, EdudecaApiError } from '../../services/edudecaApi';
 import { progressService } from '../../services/progressService';
-import { buildChallengeCompletePayload } from '../../services/studentLoop/challengeCompletePayload';
+import {
+  appendPendingResult,
+  buildChallengeCompletePayload,
+} from '../../services/studentLoop/challengeCompletePayload';
 import { mapChallengeQuestion } from '../../services/studentLoop/mapChallengeQuestion';
 import { getGateErrorAction } from '../../utils/gateErrors';
 
@@ -41,6 +44,13 @@ interface QuizQuestion {
   correctIndex: number;
 }
 
+interface QuizResult {
+  questionId: string;
+  subjectId: string;
+  isCorrect: boolean;
+  skipped: boolean;
+}
+
 export const QuizScreen: React.FC<QuizScreenProps> = ({ navigation, route }) => {
   const targetLevel = route.params?.level || 1;
   const user = useAppStore((state) => state.user);
@@ -49,7 +59,7 @@ export const QuizScreen: React.FC<QuizScreenProps> = ({ navigation, route }) => 
   const [currentIndex, setCurrentIndex] = useState<number>(0);
   const [score, setScore] = useState<number>(0);
   const [strikes, setStrikes] = useState<number>(0);
-  const [results, setResults] = useState<any[]>([]);
+  const [results, setResults] = useState<QuizResult[]>([]);
 
   const limitTime = targetLevel === 1 ? 5 * 60 : targetLevel === 2 ? 10 * 60 : 20 * 60;
   const limitStrikes = targetLevel === 1 ? 5 : targetLevel === 2 ? 7 : 10;
@@ -62,6 +72,9 @@ export const QuizScreen: React.FC<QuizScreenProps> = ({ navigation, route }) => 
 
   const timerRef = useRef<any>(null);
   const startTimeRef = useRef<number>(Date.now());
+  const scoreRef = useRef<number>(0);
+  const strikesRef = useRef<number>(0);
+  const resultsRef = useRef<QuizResult[]>([]);
 
   const initChallenge = async () => {
     setIsLoadingQuestions(true);
@@ -97,6 +110,9 @@ export const QuizScreen: React.FC<QuizScreenProps> = ({ navigation, route }) => 
         }));
         setQuestions(mapped);
         setCurrentIndex(0);
+        scoreRef.current = 0;
+        strikesRef.current = 0;
+        resultsRef.current = [];
         setScore(0);
         setStrikes(0);
         setResults([]);
@@ -130,6 +146,18 @@ export const QuizScreen: React.FC<QuizScreenProps> = ({ navigation, route }) => 
   }, [targetLevel]);
 
   useEffect(() => {
+    scoreRef.current = score;
+  }, [score]);
+
+  useEffect(() => {
+    strikesRef.current = strikes;
+  }, [strikes]);
+
+  useEffect(() => {
+    resultsRef.current = results;
+  }, [results]);
+
+  useEffect(() => {
     if (isLoadingQuestions || questions.length === 0) return;
     timerRef.current = setInterval(() => {
       setTimeLeft((prev) => {
@@ -144,40 +172,61 @@ export const QuizScreen: React.FC<QuizScreenProps> = ({ navigation, route }) => 
     return () => clearInterval(timerRef.current);
   }, [isLoadingQuestions, questions]);
 
-  const handleEndChallenge = async (reason: 'won' | 'strikes' | 'time' | 'quit') => {
+  const handleEndChallenge = async (
+    reason: 'won' | 'strikes' | 'time' | 'quit',
+    pendingResult?: QuizResult,
+  ) => {
     clearInterval(timerRef.current);
     if (isSubmitting) return;
     setIsSubmitting(true);
     try {
+      let resultsSnapshot = resultsRef.current;
+      if (pendingResult) {
+        resultsSnapshot = appendPendingResult(resultsSnapshot, pendingResult);
+      }
+      if (reason === 'time') {
+        const unansweredQuestion = questions.find(
+          (question) => !resultsSnapshot.some((result) => result.questionId === question.id),
+        );
+        if (unansweredQuestion) {
+          resultsSnapshot = appendPendingResult(resultsSnapshot, {
+            questionId: unansweredQuestion.id,
+            subjectId: unansweredQuestion.discipline,
+            isCorrect: false,
+            skipped: true,
+          });
+        }
+      }
+      if (resultsSnapshot !== resultsRef.current) {
+        resultsRef.current = resultsSnapshot;
+        setResults(resultsSnapshot);
+      }
+      const scoreSnapshot = scoreRef.current;
+      const strikesSnapshot = strikesRef.current;
       const response = await edudecaApi.completeChallenge(
         buildChallengeCompletePayload({
           reason,
-          correct: score,
+          correct: scoreSnapshot,
           total: questions.length,
           campaignLevelAtStart: targetLevel,
-          strikes,
-          results: results.map((row: any) => ({
-            questionId: String(row.questionId ?? row.id ?? ''),
-            subjectId: String(row.subjectId ?? row.discipline ?? ''),
-            isCorrect: Boolean(row.isCorrect),
-            skipped: Boolean(row.skipped),
-          })),
+          strikes: strikesSnapshot,
+          results: resultsSnapshot,
         }),
       );
       await progressService.loadProgress();
-      const accuracy = questions.length > 0 ? Math.round((score / questions.length) * 100) : 0;
+      const accuracy = questions.length > 0 ? Math.round((scoreSnapshot / questions.length) * 100) : 0;
       const nextLevel = response?.progress?.campaignLevel;
-      const xpEarned = response?.progress?.xp ?? score * 10;
+      const xpEarned = response?.progress?.xp ?? scoreSnapshot * 10;
       navigation.replace('Results', {
-        score,
+        score: scoreSnapshot,
         total: questions.length,
         earnedRdm: xpEarned,
         accuracy,
         leveledUp: Boolean(nextLevel && nextLevel > targetLevel),
         newLevel: nextLevel,
         reason,
-        correct: score,
-        strikes,
+        correct: scoreSnapshot,
+        strikes: strikesSnapshot,
         xpEarned,
         campaignLevelAtStart: targetLevel,
       });
@@ -205,44 +254,53 @@ export const QuizScreen: React.FC<QuizScreenProps> = ({ navigation, route }) => 
     setPickedIndex(index);
     const currentQ = questions[currentIndex];
     if (index === currentQ.correctIndex) {
-      setScore((s) => s + 1);
+      const nextScore = scoreRef.current + 1;
+      scoreRef.current = nextScore;
+      setScore(nextScore);
     } else {
-      setStrikes((s) => {
-        const newStrikes = s + 1;
-        if (newStrikes >= limitStrikes) {
-          setTimeout(() => handleEndChallenge('strikes'), 800);
-        }
-        return newStrikes;
-      });
+      const nextStrikes = strikesRef.current + 1;
+      strikesRef.current = nextStrikes;
+      setStrikes(nextStrikes);
+      if (nextStrikes >= limitStrikes) {
+        setTimeout(() => handleEndChallenge('strikes'), 800);
+      }
     }
-    setResults((prev) => [
-      ...prev,
-      { questionId: currentQ.id, subjectId: currentQ.discipline, isCorrect: index === currentQ.correctIndex, skipped: false },
-    ]);
+    const nextResults = appendPendingResult(resultsRef.current, {
+      questionId: currentQ.id,
+      subjectId: currentQ.discipline,
+      isCorrect: index === currentQ.correctIndex,
+      skipped: false,
+    });
+    resultsRef.current = nextResults;
+    setResults(nextResults);
   };
 
   const handleNext = () => {
     const currentQ = questions[currentIndex];
     const isSkipped = pickedIndex === null;
+    let skippedResult: QuizResult | undefined;
     if (isSkipped) {
-      setResults((prev) => [
-        ...prev,
-        { questionId: currentQ.id, subjectId: currentQ.discipline, isCorrect: false, skipped: true },
-      ]);
-      setStrikes((s) => {
-        const newStrikes = s + 1;
-        if (newStrikes >= limitStrikes) {
-          setTimeout(() => handleEndChallenge('strikes'), 300);
-          return newStrikes;
-        }
-        return newStrikes;
-      });
+      skippedResult = {
+        questionId: currentQ.id,
+        subjectId: currentQ.discipline,
+        isCorrect: false,
+        skipped: true,
+      };
+      const nextResults = appendPendingResult(resultsRef.current, skippedResult);
+      resultsRef.current = nextResults;
+      setResults(nextResults);
+      const nextStrikes = strikesRef.current + 1;
+      strikesRef.current = nextStrikes;
+      setStrikes(nextStrikes);
+      if (nextStrikes >= limitStrikes) {
+        setTimeout(() => handleEndChallenge('strikes'), 300);
+      }
     }
     if (currentIndex < questions.length - 1) {
       setCurrentIndex((i) => i + 1);
       setPickedIndex(null);
     } else {
-      handleEndChallenge('won');
+      handleEndChallenge('won', skippedResult);
     }
   };
 

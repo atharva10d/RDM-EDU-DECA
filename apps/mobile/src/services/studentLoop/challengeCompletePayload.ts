@@ -27,6 +27,15 @@ const REASONS: ChallengeReason[] = [
   "quit",
 ];
 
+export function appendPendingResult<T extends { questionId: string }>(
+  results: T[],
+  pending: T,
+): T[] {
+  return results.some((result) => result.questionId === pending.questionId)
+    ? results
+    : [...results, pending];
+}
+
 export function buildChallengeCompletePayload(
   input: ChallengeCompletePayload,
 ): ChallengeCompletePayload {
