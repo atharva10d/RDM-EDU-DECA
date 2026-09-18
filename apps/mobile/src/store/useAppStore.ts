@@ -1,9 +1,16 @@
 ﻿import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
 import * as SecureStore from 'expo-secure-store';
-import { TrackType, UserProfile, ReferredContact } from '@edudeca/types';
+import { TrackType, UserProfile } from '@edudeca/types';
+import { displayReferralCode } from '../services/studentLoop/displayReferralCode';
+import {
+  APP_PERSIST_NAME,
+  APP_PERSIST_VERSION,
+  mergeAppPersist,
+  migrateAppPersist,
+  partializeAppPersist,
+} from './persistSlice';
 
-// Custom Expo SecureStore adapter for Zustand persistence in Expo Go & native builds
 const secureStoreStorage = {
   getItem: async (name: string): Promise<string | null> => {
     try {
@@ -29,19 +36,12 @@ const secureStoreStorage = {
 };
 
 interface AppState {
-  // Auth state
-  isGuestOrDevAuthenticated: boolean;
-  loginDevOrGuest: (userPartial?: Partial<UserProfile>) => void;
   signOut: () => void;
-
-  // User & Profile
   user: UserProfile;
   selectedTrack: TrackType;
   setUser: (userPartial: Partial<UserProfile>) => void;
   setUserProfile: (profile: UserProfile) => void;
   setSelectedTrack: (track: TrackType) => void;
-
-  // Gamification Metrics
   level: number;
   streak: number;
   rdmBalance: number;
@@ -56,27 +56,18 @@ interface AppState {
   addRdm: (amount: number) => void;
   incrementStreak: () => void;
   incrementQuizzesCompleted: () => void;
-
-  // Referral State
-  referredContacts: ReferredContact[];
-  setReferredContacts: (contacts: ReferredContact[]) => void;
-  addReferredContact: (contact: ReferredContact) => void;
-
-  // Daily Challenge Progress State
   campaignLevel: number;
   todayCompleted: boolean;
   freeZoneComplete: boolean;
   disciplines: string[];
   trialsRemaining: number;
   setProgress: (progress: Partial<AppState>) => void;
-
-  // Reset
   resetState: () => void;
 }
 
 const initialProfile: UserProfile = {
-  id: 'user_dev_01',
-  name: 'Student Whiz',
+  id: '',
+  name: 'Student',
   email: '',
   classGrade: 'Class 11',
   scienceStream: true,
@@ -89,25 +80,27 @@ const initialProfile: UserProfile = {
   streak: 0,
   rdmBalance: 0,
   quizzesCompleted: 0,
-  referralCode: 'EDUD1000',
+  referralCode: '',
+};
+
+const initialSlice = {
+  user: initialProfile,
+  selectedTrack: 'A' as TrackType,
+  level: 0,
+  streak: 0,
+  rdmBalance: 0,
+  quizzesCompleted: 0,
+  campaignLevel: 1,
+  todayCompleted: false,
+  freeZoneComplete: false,
+  disciplines: [] as string[],
+  trialsRemaining: 10,
 };
 
 export const useAppStore = create<AppState>()(
   persist(
     (set) => ({
-      isGuestOrDevAuthenticated: false,
-      user: initialProfile,
-      selectedTrack: 'A',
-      level: 0,
-      streak: 0,
-      rdmBalance: 0,
-      quizzesCompleted: 0,
-      referredContacts: [],
-      campaignLevel: 1,
-      todayCompleted: false,
-      freeZoneComplete: false,
-      disciplines: [],
-      trialsRemaining: 10,
+      ...initialSlice,
 
       setProgress: (progress) =>
         set((state) => ({
@@ -115,46 +108,38 @@ export const useAppStore = create<AppState>()(
           ...progress,
         })),
 
-      loginDevOrGuest: () => undefined,
-
-      signOut: () =>
-        set({
-          isGuestOrDevAuthenticated: false,
-          user: initialProfile,
-          selectedTrack: 'A',
-          level: 0,
-          streak: 0,
-          rdmBalance: 0,
-          quizzesCompleted: 0,
-          referredContacts: [],
-          campaignLevel: 1,
-          todayCompleted: false,
-          freeZoneComplete: false,
-          disciplines: [],
-          trialsRemaining: 10,
-        }),
+      signOut: () => set({ ...initialSlice }),
 
       setUser: (userPartial) =>
-        set((state) => ({
-          user: { ...state.user, ...userPartial },
-          ...(userPartial.level !== undefined ? { level: userPartial.level } : {}),
-          ...(userPartial.rdmBalance !== undefined ? { rdmBalance: userPartial.rdmBalance } : {}),
-          ...(userPartial.streak !== undefined ? { streak: userPartial.streak } : {}),
-          ...(userPartial.quizzesCompleted !== undefined
-            ? { quizzesCompleted: userPartial.quizzesCompleted }
-            : {}),
-          ...(userPartial.selectedTrack ? { selectedTrack: userPartial.selectedTrack } : {}),
-        })),
+        set((state) => {
+          const user = { ...state.user, ...userPartial };
+          user.referralCode = displayReferralCode(user.referralCode) ?? '';
+          return {
+            user,
+            ...(userPartial.level !== undefined ? { level: userPartial.level } : {}),
+            ...(userPartial.rdmBalance !== undefined ? { rdmBalance: userPartial.rdmBalance } : {}),
+            ...(userPartial.streak !== undefined ? { streak: userPartial.streak } : {}),
+            ...(userPartial.quizzesCompleted !== undefined
+              ? { quizzesCompleted: userPartial.quizzesCompleted }
+              : {}),
+            ...(userPartial.selectedTrack ? { selectedTrack: userPartial.selectedTrack } : {}),
+          };
+        }),
 
       setUserProfile: (profile) =>
-        set({
-          user: profile,
+        set((state) => ({
+          user: {
+            ...state.user,
+            ...profile,
+            referralCode:
+              displayReferralCode(profile.referralCode || state.user.referralCode) ?? '',
+          },
           level: profile.level ?? 0,
           rdmBalance: profile.rdmBalance ?? 0,
           streak: profile.streak ?? 0,
           quizzesCompleted: profile.quizzesCompleted ?? 0,
           selectedTrack: profile.selectedTrack || 'A',
-        }),
+        })),
 
       updateUserStats: (stats) =>
         set((state) => ({
@@ -212,37 +197,15 @@ export const useAppStore = create<AppState>()(
           };
         }),
 
-      setReferredContacts: (contacts) =>
-        set({
-          referredContacts: contacts,
-        }),
-
-      addReferredContact: (contact) =>
-        set((state) => ({
-          referredContacts: [contact, ...state.referredContacts],
-        })),
-
-      resetState: () =>
-        set({
-          isGuestOrDevAuthenticated: false,
-          user: initialProfile,
-          selectedTrack: 'A',
-          level: 0,
-          streak: 0,
-          rdmBalance: 0,
-          quizzesCompleted: 0,
-          referredContacts: [],
-          campaignLevel: 1,
-          todayCompleted: false,
-          freeZoneComplete: false,
-          disciplines: [],
-          trialsRemaining: 10,
-        }),
+      resetState: () => set({ ...initialSlice }),
     }),
     {
-      name: 'edudeca-user-storage',
+      name: APP_PERSIST_NAME,
+      version: APP_PERSIST_VERSION,
       storage: createJSONStorage(() => secureStoreStorage),
+      partialize: (state) => partializeAppPersist(state),
+      migrate: (persisted, version) => migrateAppPersist(persisted, version),
+      merge: (persisted, current) => mergeAppPersist(persisted, current),
     }
   )
 );
-

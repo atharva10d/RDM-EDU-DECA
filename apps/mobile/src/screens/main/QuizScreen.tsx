@@ -1,4 +1,4 @@
-﻿import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   View,
   Text,
@@ -26,6 +26,10 @@ import {
 } from '../../services/studentLoop/challengeCompletePayload';
 import { mapChallengeQuestion } from '../../services/studentLoop/mapChallengeQuestion';
 import { getGateErrorAction } from '../../utils/gateErrors';
+import {
+  challengeMaxStrikes,
+  challengeSessionDurationSec,
+} from '../../services/studentLoop/challengeSpec';
 
 type QuizScreenNavigationProp = NativeStackNavigationProp<DashboardStackParamList, 'Quiz'>;
 type QuizScreenRouteProp = RouteProp<DashboardStackParamList, 'Quiz'>;
@@ -55,6 +59,7 @@ interface QuizResult {
 export const QuizScreen: React.FC<QuizScreenProps> = ({ navigation, route }) => {
   const targetLevel = route.params?.level || 1;
   const user = useAppStore((state) => state.user);
+  const trialsRemaining = useAppStore((state) => state.trialsRemaining);
 
   const [questions, setQuestions] = useState<QuizQuestion[]>([]);
   const [currentIndex, setCurrentIndex] = useState<number>(0);
@@ -62,8 +67,8 @@ export const QuizScreen: React.FC<QuizScreenProps> = ({ navigation, route }) => 
   const [strikes, setStrikes] = useState<number>(0);
   const [results, setResults] = useState<QuizResult[]>([]);
 
-  const limitTime = targetLevel === 1 ? 5 * 60 : targetLevel === 2 ? 10 * 60 : 20 * 60;
-  const limitStrikes = targetLevel === 1 ? 5 : targetLevel === 2 ? 7 : 10;
+  const limitTime = challengeSessionDurationSec(targetLevel);
+  const limitStrikes = challengeMaxStrikes(targetLevel);
 
   const [timeLeft, setTimeLeft] = useState<number>(limitTime);
   const [pickedIndex, setPickedIndex] = useState<number | null>(null);
@@ -415,7 +420,7 @@ export const QuizScreen: React.FC<QuizScreenProps> = ({ navigation, route }) => 
           </TouchableOpacity>
           <View style={styles.progressWrap}>
             <View style={styles.progressLabelRow}>
-              <Text style={styles.progressPos}>Q{currentIndex + 1}/{total} · Strikes: {strikes}/{limitStrikes}</Text>
+              <Text style={styles.progressPos}>Lv{targetLevel} · Q{currentIndex + 1}/{total} · Strikes: {strikes}/{limitStrikes} · {trialsRemaining} left</Text>
               <Text style={styles.progressScore}>Score: {score}</Text>
             </View>
             <View style={styles.progressBarBg}>
@@ -484,37 +489,37 @@ const styles = StyleSheet.create({
   backBtn: { width: 36, height: 36, borderRadius: 18, backgroundColor: colors.card, borderWidth: 1, borderColor: colors.border, alignItems: 'center', justifyContent: 'center' },
   progressWrap: { flex: 1 },
   progressLabelRow: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 6 },
-  progressPos: { fontSize: 11, color: colors.muted, fontWeight: typography.fontWeight.bold },
-  progressScore: { fontSize: 11, color: colors.teal, fontWeight: typography.fontWeight.extrabold },
+  progressPos: { fontSize: 13, color: colors.muted, fontWeight: typography.fontWeight.bold },
+  progressScore: { fontSize: 13, color: colors.teal, fontWeight: typography.fontWeight.extrabold },
   progressBarBg: { height: 6, backgroundColor: colors.border, borderRadius: 3, overflow: 'hidden' },
   progressBarFill: { height: '100%', backgroundColor: colors.teal, borderRadius: 3 },
-  timerRing: { paddingHorizontal: 10, height: 38, borderRadius: 19, backgroundColor: colors.card, borderWidth: 2, borderColor: colors.teal, alignItems: 'center', justifyContent: 'center' },
+  timerRing: { paddingHorizontal: 12, height: 42, borderRadius: 21, backgroundColor: colors.card, borderWidth: 2, borderColor: colors.teal, alignItems: 'center', justifyContent: 'center' },
   timerUrgent: { borderColor: colors.amber },
   timerDead: { borderColor: colors.red },
-  timerText: { fontSize: 12, fontWeight: typography.fontWeight.extrabold, color: colors.teal },
+  timerText: { fontSize: 14, fontWeight: typography.fontWeight.extrabold, color: colors.teal },
   timerTextUrgent: { color: colors.amber },
   timerTextDead: { color: colors.red },
   tagWrap: { alignItems: 'flex-start', marginBottom: 12 },
-  tagBadge: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingVertical: 4, paddingHorizontal: 10, borderRadius: borderRadius.round, borderWidth: 1, backgroundColor: colors.card },
+  tagBadge: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingVertical: 5, paddingHorizontal: 12, borderRadius: borderRadius.round, borderWidth: 1, backgroundColor: colors.card },
   tagDot: { width: 6, height: 6, borderRadius: 3 },
-  tagLabel: { fontSize: 11, fontWeight: typography.fontWeight.bold, textTransform: 'uppercase' },
-  questionCard: { backgroundColor: colors.card, borderRadius: borderRadius.lg, borderWidth: 1, borderColor: colors.border, padding: 18, marginBottom: 18, minHeight: 90, justifyContent: 'center' },
-  questionText: { fontSize: 15.5, fontWeight: typography.fontWeight.bold, color: colors.text, lineHeight: 22 },
+  tagLabel: { fontSize: 12.5, fontWeight: typography.fontWeight.bold, textTransform: 'uppercase' },
+  questionCard: { backgroundColor: colors.card, borderRadius: borderRadius.lg, borderWidth: 1, borderColor: colors.border, padding: 20, marginBottom: 18, minHeight: 100, justifyContent: 'center' },
+  questionText: { fontSize: 17.5, fontWeight: typography.fontWeight.bold, color: colors.text, lineHeight: 25 },
   optionsWrap: { gap: 10, marginBottom: 20 },
-  optBtn: { flexDirection: 'row', alignItems: 'center', padding: 12, borderRadius: borderRadius.md, borderWidth: 1.5, gap: 12 },
+  optBtn: { flexDirection: 'row', alignItems: 'center', padding: 14, minHeight: 54, borderRadius: borderRadius.md, borderWidth: 1.5, gap: 12 },
   optNormal: { backgroundColor: colors.card, borderColor: colors.border },
   optCorrect: { backgroundColor: colors.tealAlpha10, borderColor: colors.teal },
   optIncorrect: { backgroundColor: 'rgba(239, 68, 68, 0.1)', borderColor: colors.red },
   optDimmed: { backgroundColor: colors.card, borderColor: colors.border, opacity: 0.5 },
-  optLetter: { width: 26, height: 26, borderRadius: 13, alignItems: 'center', justifyContent: 'center' },
+  optLetter: { width: 32, height: 32, borderRadius: 16, alignItems: 'center', justifyContent: 'center' },
   optLetterNormal: { backgroundColor: colors.card2 },
   optLetterCorrect: { backgroundColor: colors.teal },
   optLetterIncorrect: { backgroundColor: colors.red },
-  optLetterText: { fontSize: 11, fontWeight: typography.fontWeight.extrabold },
+  optLetterText: { fontSize: 13, fontWeight: typography.fontWeight.extrabold },
   optLetterTextNormal: { color: colors.text },
   optLetterTextCorrect: { color: '#04140E' },
   optLetterTextIncorrect: { color: '#FFFFFF' },
-  optText: { flex: 1, fontSize: 13.5, fontWeight: typography.fontWeight.medium },
+  optText: { flex: 1, fontSize: 15.5, fontWeight: typography.fontWeight.medium },
   optTextNormal: { color: colors.text },
   optTextCorrect: { color: colors.teal, fontWeight: typography.fontWeight.bold },
   optTextIncorrect: { color: colors.red, fontWeight: typography.fontWeight.bold },

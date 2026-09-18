@@ -59,15 +59,15 @@ export const Pill: React.FC<PillProps> = ({
 
 const styles = StyleSheet.create({
   basePill: {
-    paddingVertical: 5,
-    paddingHorizontal: 12,
+    paddingVertical: 6,
+    paddingHorizontal: 14,
     borderRadius: borderRadius.round,
     borderWidth: 1,
     alignItems: 'center',
     justifyContent: 'center',
   },
   baseText: {
-    fontSize: typography.fontSize.xs + 0.5,
+    fontSize: typography.fontSize.xs,
     fontWeight: typography.fontWeight.bold,
   },
   pillTeal: {

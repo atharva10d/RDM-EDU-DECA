@@ -1,6 +1,7 @@
 import React from 'react';
-import { View, Text, StyleSheet, Platform } from 'react-native';
+import { StyleSheet, Platform } from 'react-native';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { MainTabParamList } from './types';
 import { DashboardStackNavigator } from './DashboardStackNavigator';
 import { LevelPathScreen, LeaderboardScreen, RewardsScreen, ProfileScreen } from '../screens/main';
@@ -10,14 +11,32 @@ import { Home, Signal, Trophy, Star, User } from 'lucide-react-native';
 const Tab = createBottomTabNavigator<MainTabParamList>();
 
 export const MainTabNavigator: React.FC = () => {
+  const insets = useSafeAreaInsets();
+  // Safe area bottom inset following standard mobile ergonomics (Spotify, Instagram, YouTube)
+  const bottomInset = Math.max(insets.bottom, Platform.OS === 'android' ? 12 : 8);
+  const barHeight = 56 + bottomInset;
+
   return (
     <Tab.Navigator
       initialRouteName="DashboardTab"
       screenOptions={{
         headerShown: false,
-        tabBarStyle: styles.tabBar,
+        tabBarStyle: {
+          backgroundColor: '#0B0E14',
+          borderTopWidth: 1,
+          borderTopColor: colors.border,
+          height: barHeight,
+          paddingTop: 6,
+          paddingBottom: bottomInset,
+          elevation: 12,
+          shadowColor: '#000',
+          shadowOffset: { width: 0, height: -3 },
+          shadowOpacity: 0.25,
+          shadowRadius: 8,
+        },
+        tabBarItemStyle: styles.tabItem,
         tabBarActiveTintColor: colors.teal,
-        tabBarInactiveTintColor: colors.mutedDim,
+        tabBarInactiveTintColor: colors.muted,
         tabBarLabelStyle: styles.tabLabel,
       }}
     >
@@ -26,8 +45,8 @@ export const MainTabNavigator: React.FC = () => {
         component={DashboardStackNavigator as React.ComponentType<any>}
         options={{
           tabBarLabel: 'Home',
-          tabBarIcon: ({ color, size }) => (
-            <Home color={color} size={size || 20} strokeWidth={2.4} />
+          tabBarIcon: ({ color }) => (
+            <Home color={color} size={22} strokeWidth={2.2} />
           ),
         }}
       />
@@ -36,8 +55,8 @@ export const MainTabNavigator: React.FC = () => {
         component={LevelPathScreen as React.ComponentType<any>}
         options={{
           tabBarLabel: 'Levels',
-          tabBarIcon: ({ color, size }) => (
-            <Signal color={color} size={size || 20} strokeWidth={2.4} />
+          tabBarIcon: ({ color }) => (
+            <Signal color={color} size={22} strokeWidth={2.2} />
           ),
         }}
       />
@@ -46,8 +65,8 @@ export const MainTabNavigator: React.FC = () => {
         component={LeaderboardScreen as React.ComponentType<any>}
         options={{
           tabBarLabel: 'Rank',
-          tabBarIcon: ({ color, size }) => (
-            <Trophy color={color} size={size || 20} strokeWidth={2.4} />
+          tabBarIcon: ({ color }) => (
+            <Trophy color={color} size={22} strokeWidth={2.2} />
           ),
         }}
       />
@@ -56,8 +75,8 @@ export const MainTabNavigator: React.FC = () => {
         component={RewardsScreen as React.ComponentType<any>}
         options={{
           tabBarLabel: 'Rewards',
-          tabBarIcon: ({ color, size }) => (
-            <Star color={color} size={size || 20} strokeWidth={2.4} />
+          tabBarIcon: ({ color }) => (
+            <Star color={color} size={22} strokeWidth={2.2} />
           ),
         }}
       />
@@ -66,8 +85,8 @@ export const MainTabNavigator: React.FC = () => {
         component={ProfileScreen as React.ComponentType<any>}
         options={{
           tabBarLabel: 'Profile',
-          tabBarIcon: ({ color, size }) => (
-            <User color={color} size={size || 20} strokeWidth={2.4} />
+          tabBarIcon: ({ color }) => (
+            <User color={color} size={22} strokeWidth={2.2} />
           ),
         }}
       />
@@ -76,22 +95,15 @@ export const MainTabNavigator: React.FC = () => {
 };
 
 const styles = StyleSheet.create({
-  tabBar: {
-    backgroundColor: 'rgba(11, 14, 20, 0.96)',
-    borderTopWidth: 1,
-    borderTopColor: colors.border,
-    paddingTop: 8,
-    paddingBottom: Platform.OS === 'ios' ? 24 : 10,
-    height: Platform.OS === 'ios' ? 84 : 64,
-    position: 'absolute',
-    left: 0,
-    right: 0,
-    bottom: 0,
-    elevation: 10,
+  tabItem: {
+    paddingVertical: 2,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   tabLabel: {
-    fontSize: 10,
+    fontSize: 10.5,
     fontWeight: typography.fontWeight.bold,
     marginTop: 2,
+    letterSpacing: 0.2,
   },
 });

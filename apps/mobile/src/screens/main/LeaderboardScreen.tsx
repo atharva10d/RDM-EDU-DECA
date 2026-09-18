@@ -10,43 +10,35 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect } from '@react-navigation/native';
-import { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import { DashboardStackParamList } from '../../navigation/types';
-import { colors, typography, borderRadius, spacing, Card } from '@edudeca/ui';
-import { ArrowLeft, Trophy, Globe } from 'lucide-react-native';
+import { colors, typography } from '@edudeca/ui';
+import { ArrowLeft, Trophy, Crown, Medal, Sparkles, Megaphone, Share2 } from 'lucide-react-native';
 import { LeaderboardEntry } from '@edudeca/types';
 import { leaderboardService } from '../../services';
 import { useAppStore } from '../../store/useAppStore';
-
-type LeaderboardScreenNavigationProp = NativeStackNavigationProp<
-  DashboardStackParamList,
-  'Leaderboard'
->;
+import { visibleLeaderboardRows } from '../../services/studentLoop/visibleLeaderboardRows';
 
 interface LeaderboardScreenProps {
-  navigation?: any;
+  navigation?: { goBack: () => void };
 }
 
-const RANK_ICONS = ['👑', '🥈', '🥉'];
+const AVATAR_COLORS = ['#FB7185', '#60A5FA', '#FBBF24', '#34D399', '#A78BFA', '#22D3EE'];
+
+function avatarColor(index: number, isMe: boolean): string {
+  if (isMe) return '#8B5CF6';
+  return AVATAR_COLORS[index % AVATAR_COLORS.length];
+}
 
 export const LeaderboardScreen: React.FC<LeaderboardScreenProps> = ({ navigation }) => {
   const user = useAppStore((state) => state.user);
-  const [viewMode, setViewMode] = useState<'level' | 'national'>('level');
-  const [selectedLevel, setSelectedLevel] = useState<number>(1);
+  const [tab, setTab] = useState<'students' | 'colleges'>('students');
   const [rankings, setRankings] = useState<LeaderboardEntry[]>([]);
-  const [loading, setLoading] = useState<boolean>(true);
-  const [refreshing, setRefreshing] = useState<boolean>(false);
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
 
   const fetchRankings = useCallback(async () => {
     try {
       setLoading(true);
-      let data: LeaderboardEntry[] = [];
-      if (viewMode === 'level') {
-        data = await leaderboardService.fetchLeaderboardByLevel(selectedLevel, 50, user?.id);
-      } else {
-        data = await leaderboardService.fetchGlobalLeaderboard(50, user?.id);
-      }
-
+      const data = await leaderboardService.fetchXpLeaderboard(user?.id);
       setRankings(data || []);
     } catch (_err) {
       setRankings([]);
@@ -54,27 +46,23 @@ export const LeaderboardScreen: React.FC<LeaderboardScreenProps> = ({ navigation
       setLoading(false);
       setRefreshing(false);
     }
-  }, [viewMode, selectedLevel, user?.id]);
+  }, [user?.id]);
 
   useFocusEffect(
     useCallback(() => {
-      fetchRankings();
-    }, [fetchRankings])
+      void fetchRankings();
+    }, [fetchRankings]),
   );
 
   const onRefresh = () => {
     setRefreshing(true);
-    fetchRankings();
+    void fetchRankings();
   };
 
-  const myEntry = rankings.find(
-    (r) => r.isCurrentUser || (user?.id && r.userId === user.id) || (user?.name && r.name === user.name)
-  );
-
   return (
-    <SafeAreaView style={styles.safeArea}>
+    <SafeAreaView style={styles.safeArea} edges={['top', 'left', 'right']}>
       <ScrollView
-        contentContainerStyle={styles.scrollContainer}
+        contentContainerStyle={styles.scroll}
         showsVerticalScrollIndicator={false}
         refreshControl={
           <RefreshControl
@@ -85,425 +73,350 @@ export const LeaderboardScreen: React.FC<LeaderboardScreenProps> = ({ navigation
           />
         }
       >
-        {/* Header */}
-        <View style={styles.header}>
+        {/* Premium Header Block */}
+        <View style={styles.premiumHeaderBlock}>
           <TouchableOpacity
             activeOpacity={0.7}
             style={styles.backBtn}
-            onPress={() => navigation.goBack()}
+            onPress={() => navigation?.goBack()}
           >
-            <ArrowLeft size={16} color={colors.text} />
+            <ArrowLeft size={18} color={colors.text} />
           </TouchableOpacity>
-          <Text style={styles.headerTitle}>🏆 Live Leaderboard</Text>
-        </View>
-
-        <Text style={styles.headerSub}>
-          Real-time national rankings updated live with every quiz played.
-        </Text>
-
-        {/* View Mode Toggle: Level vs National Standings */}
-        <View style={styles.modeToggleRow}>
-          <TouchableOpacity
-            activeOpacity={0.8}
-            style={[styles.modeBtn, viewMode === 'level' && styles.modeBtnActive]}
-            onPress={() => setViewMode('level')}
-          >
-            <Trophy size={13} color={viewMode === 'level' ? '#04140E' : colors.muted} />
-            <Text style={[styles.modeBtnText, viewMode === 'level' && styles.modeBtnTextActive]}>
-              Level Challenge
-            </Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            activeOpacity={0.8}
-            style={[styles.modeBtn, viewMode === 'national' && styles.modeBtnActive]}
-            onPress={() => setViewMode('national')}
-          >
-            <Globe size={13} color={viewMode === 'national' ? '#04140E' : colors.muted} />
-            <Text style={[styles.modeBtnText, viewMode === 'national' && styles.modeBtnTextActive]}>
-              National Standings
-            </Text>
-          </TouchableOpacity>
-        </View>
-
-        {/* Level Horizontal Scrollable Tabs (Only in Level mode) */}
-        {viewMode === 'level' ? (
-          <ScrollView
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            contentContainerStyle={styles.tabsScroll}
-          >
-            {Array.from({ length: 10 }, (_, i) => i + 1).map((lvl) => {
-              const isActive = lvl === selectedLevel;
-              return (
-                <TouchableOpacity
-                  key={lvl}
-                  activeOpacity={0.8}
-                  style={[styles.lvlTab, isActive && styles.lvlTabActive]}
-                  onPress={() => setSelectedLevel(lvl)}
-                >
-                  <Text
-                    style={[
-                      styles.lvlTabText,
-                      isActive && styles.lvlTabTextActive,
-                    ]}
-                  >
-                    Level {lvl}
-                  </Text>
-                </TouchableOpacity>
-              );
-            })}
-          </ScrollView>
-        ) : null}
-
-        {/* Your Standing Spotlight Card */}
-        {myEntry ? (
-          <View style={styles.mySpotlightCard}>
-            <View style={styles.mySpotlightLeft}>
-              <View style={styles.myRankBadge}>
-                <Text style={styles.myRankText}>#{myEntry.rank}</Text>
-              </View>
-              <View style={{ flex: 1 }}>
-                <Text style={styles.mySpotlightName}>
-                  {user?.name || myEntry.name} (You)
-                </Text>
-                <Text style={styles.mySpotlightSub} numberOfLines={1}>
-                  {user?.institution || myEntry.institution || 'Viswa Vignan'}
+          <View style={styles.headerCenter}>
+            <View style={styles.headerBadgeRow}>
+              <View
+                style={[
+                  styles.headerBadge,
+                  {
+                    backgroundColor: 'rgba(251,191,36,0.12)',
+                    borderColor: 'rgba(251,191,36,0.35)',
+                  },
+                ]}
+              >
+                <Crown size={11} color="#FBBF24" />
+                <Text style={[styles.headerBadgeText, { color: '#FBBF24' }]}>
+                  ALL-INDIA RANKINGS
                 </Text>
               </View>
             </View>
-            <View style={styles.mySpotlightScore}>
-              <Text style={styles.mySpotlightScoreVal}>{myEntry.score}</Text>
-              <Text style={styles.mySpotlightScoreSub}>{myEntry.time}</Text>
-            </View>
+            <Text style={styles.headerBlockTitle}>Leaderboard</Text>
+            <Text style={styles.headerBlockSubtitle} numberOfLines={1}>
+              Individual rank feeds straight into your college rank.
+            </Text>
           </View>
-        ) : null}
+        </View>
 
-        {/* Leaderboard Card */}
-        <Card style={styles.lbCard}>
-          {loading && !refreshing ? (
-            <View style={styles.loadingBox}>
-              <ActivityIndicator size="small" color={colors.teal} style={{ marginBottom: 8 }} />
-              <Text style={styles.loadingText}>
-                Fetching live real-time rankings...
-              </Text>
-            </View>
-          ) : rankings.length === 0 ? (
-            <Text style={styles.emptyText}>
-              No ranking records found yet.
-            </Text>
-          ) : (
-            rankings.map((row, index) => {
-              const isMe = row.isCurrentUser || (user?.id && row.userId === user.id) || (user?.name && row.name === user.name);
-              return (
-                <View
-                  key={row.userId || index}
-                  style={[
-                    styles.lbRow,
-                    isMe && styles.lbRowMe,
-                    index === rankings.length - 1 && { borderBottomWidth: 0 },
-                  ]}
-                >
-                  <Text style={[styles.lbRankIcon, index < 3 && styles.lbRankTop]}>
-                    {index < 3 ? RANK_ICONS[index] : `#${row.rank || index + 1}`}
-                  </Text>
+        <View style={styles.tabs}>
+          <TouchableOpacity
+            activeOpacity={0.85}
+            style={[styles.tab, tab === 'students' && styles.tabOn]}
+            onPress={() => setTab('students')}
+          >
+            <Text style={[styles.tabText, tab === 'students' && styles.tabTextOn]}>Students</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            activeOpacity={0.85}
+            style={[styles.tab, tab === 'colleges' && styles.tabOn]}
+            onPress={() => setTab('colleges')}
+          >
+            <Text style={[styles.tabText, tab === 'colleges' && styles.tabTextOn]}>Colleges</Text>
+          </TouchableOpacity>
+        </View>
 
-                  <View
-                    style={[
-                      styles.lbAvatar,
-                      {
-                        backgroundColor:
-                          (colors as any)[row.color] || row.color || colors.teal,
-                      },
-                    ]}
-                  >
-                    <Text style={styles.lbAvatarText}>
-                      {row.name ? row.name.charAt(0).toUpperCase() : 'W'}
-                    </Text>
-                  </View>
-
-                  <View style={styles.lbInfo}>
-                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                      <Text style={[styles.lbName, isMe && styles.lbNameMe]} numberOfLines={1}>
-                        {row.name}
-                      </Text>
-                      {isMe ? (
-                        <View style={styles.youBadge}>
-                          <Text style={styles.youBadgeText}>YOU</Text>
-                        </View>
-                      ) : null}
-                    </View>
-                    <Text style={styles.lbInst} numberOfLines={1}>
-                      {row.institution || 'Top Whiz Institute'}
-                    </Text>
-                    <Text style={styles.lbTime}>⏱ {row.time}</Text>
-                  </View>
-
-                  <View style={[styles.lbScoreBadge, isMe && styles.lbScoreBadgeMe]}>
-                    <Text style={[styles.lbScoreText, isMe && styles.lbScoreTextMe]}>
-                      {row.score}
-                    </Text>
-                  </View>
+        {tab === 'colleges' ? (
+          <Text style={styles.empty}>College ranks coming soon.</Text>
+        ) : loading && !refreshing ? (
+          <ActivityIndicator color={colors.teal} style={{ marginVertical: 28 }} />
+        ) : rankings.length === 0 ? (
+          <Text style={styles.empty}>No ranking records found yet.</Text>
+        ) : (
+          visibleLeaderboardRows(rankings, user?.id, 10).map((row, index) => {
+            const isMe =
+              row.isCurrentUser || Boolean(user?.id && row.userId === user.id);
+            const rank = row.rank || index + 1;
+            return (
+              <View key={row.userId || String(index)} style={[styles.row, isMe && styles.rowMe]}>
+                {isMe ? <View style={styles.youBar} /> : null}
+                <View style={styles.rankSlot}>
+                  {rank === 1 ? (
+                    <Crown size={18} color="#FBBF24" fill="rgba(251,191,36,0.35)" />
+                  ) : rank === 2 ? (
+                    <Trophy size={18} color="#CBD5E1" fill="rgba(203,213,225,0.3)" />
+                  ) : rank === 3 ? (
+                    <Medal size={18} color="#F59E0B" fill="rgba(245,158,11,0.3)" />
+                  ) : (
+                    <Text style={[styles.rankNum, isMe && { color: '#FBBF24' }]}>{rank}</Text>
+                  )}
                 </View>
-              );
-            })
-          )}
-        </Card>
+                <View style={[styles.avatar, { backgroundColor: avatarColor(index, isMe) }]}>
+                  <Text style={styles.avatarText}>
+                    {(row.name || 'S').charAt(0).toUpperCase()}
+                  </Text>
+                </View>
+                <View style={styles.info}>
+                  <View style={styles.nameRow}>
+                    <Text style={styles.name} numberOfLines={1}>
+                      {row.name || 'Student'}
+                    </Text>
+                    {isMe ? (
+                      <View style={styles.youPill}>
+                        <Sparkles size={10} color="#FBBF24" />
+                        <Text style={styles.youPillText}>You</Text>
+                      </View>
+                    ) : null}
+                  </View>
+                  <Text style={styles.school} numberOfLines={1}>
+                    {row.institution || ''}
+                  </Text>
+                </View>
+                <View style={styles.xpPill}>
+                  <Text style={styles.xpText}>
+                    {(row.rawScore ?? 0).toLocaleString('en-IN')} XP
+                  </Text>
+                </View>
+              </View>
+            );
+          })
+        )}
+
+        <View style={styles.viralCard}>
+          <View style={styles.viralIcon}>
+            <Megaphone size={22} color="#FBBF24" />
+          </View>
+          <View style={{ flex: 1 }}>
+            <View style={styles.viralTitleRow}>
+              <Text style={styles.viralTitle}>Referral Virality Engine</Text>
+              <View style={styles.xpBadge}>
+                <Share2 size={10} color="#FBBF24" />
+                <Text style={styles.xpBadgeText}>+500 XP / Referral</Text>
+              </View>
+            </View>
+            <Text style={styles.viralBody}>
+              Every friend you bring in adds XP to both your profile and your college's total — the
+              leaderboard is the growth engine.
+            </Text>
+          </View>
+        </View>
       </ScrollView>
     </SafeAreaView>
   );
 };
 
 const styles = StyleSheet.create({
-  safeArea: {
-    flex: 1,
-    backgroundColor: colors.bg,
-  },
-  scrollContainer: {
-    paddingHorizontal: 18,
-    paddingTop: 14,
-    paddingBottom: 90,
-  },
-  header: {
+  safeArea: { flex: 1, backgroundColor: colors.bg },
+  scroll: { paddingHorizontal: 18, paddingTop: 12, paddingBottom: 28 },
+  premiumHeaderBlock: {
+    minHeight: 88,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.card,
+    paddingVertical: 12,
+    paddingHorizontal: 14,
     flexDirection: 'row',
     alignItems: 'center',
+    marginBottom: 16,
     gap: 12,
-    marginBottom: 6,
+  },
+  headerCenter: {
+    flex: 1,
+    justifyContent: 'center',
+  },
+  headerBadgeRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 4,
+  },
+  headerBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 7,
+    paddingVertical: 2,
+    borderRadius: 6,
+    borderWidth: 1,
+    alignSelf: 'flex-start',
+  },
+  headerBadgeText: {
+    fontSize: 10,
+    fontWeight: typography.fontWeight.extrabold,
+    letterSpacing: 0.8,
+  },
+  headerBlockTitle: {
+    fontSize: 18,
+    fontWeight: typography.fontWeight.extrabold,
+    color: colors.text,
+  },
+  headerBlockSubtitle: {
+    fontSize: 11.5,
+    color: colors.muted,
+    marginTop: 2,
+    lineHeight: 16,
   },
   backBtn: {
-    width: 34,
-    height: 34,
-    borderRadius: 17,
-    backgroundColor: colors.card,
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: colors.bg,
     borderWidth: 1,
     borderColor: colors.border,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  headerTitle: {
+  headerRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 12, marginBottom: 16 },
+  title: {
+    fontSize: 22,
+    fontWeight: typography.fontWeight.extrabold,
+    color: colors.text,
+  },
+  subtitle: { fontSize: 12, color: colors.muted, marginTop: 4 },
+  tabs: {
+    flexDirection: 'row',
+    alignSelf: 'flex-start',
+    backgroundColor: colors.card,
+    borderRadius: 999,
+    padding: 4,
+    marginBottom: 16,
+    gap: 4,
+  },
+  tab: { paddingVertical: 8, paddingHorizontal: 18, borderRadius: 999 },
+  tabOn: { backgroundColor: colors.teal },
+  tabText: {
+    fontSize: 13,
+    fontWeight: typography.fontWeight.bold,
+    color: colors.muted,
+  },
+  tabTextOn: { color: '#04140E' },
+  empty: {
+    fontSize: 13,
+    color: colors.muted,
+    textAlign: 'center',
+    paddingVertical: 24,
+  },
+  row: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.06)',
+    backgroundColor: 'rgba(19,23,34,0.7)',
+    paddingVertical: 12,
+    paddingHorizontal: 12,
+    marginBottom: 8,
+    overflow: 'hidden',
+  },
+  rowMe: {
+    borderColor: 'rgba(251,191,36,0.55)',
+    backgroundColor: 'rgba(245,158,11,0.12)',
+  },
+  youBar: {
+    position: 'absolute',
+    left: 0,
+    top: 0,
+    bottom: 0,
+    width: 4,
+    backgroundColor: '#F59E0B',
+  },
+  rankSlot: { width: 28, alignItems: 'center' },
+  rankNum: {
     fontSize: 15,
     fontWeight: typography.fontWeight.extrabold,
-    color: colors.text,
-  },
-  headerSub: {
-    fontSize: 12,
     color: colors.muted,
-    marginBottom: 14,
+    fontVariant: ['tabular-nums'],
   },
-  tabsScroll: {
-    flexDirection: 'row',
-    gap: 7,
-    paddingBottom: 6,
-    marginBottom: 16,
-  },
-  lvlTab: {
-    paddingVertical: 9,
-    paddingHorizontal: 15,
-    borderRadius: borderRadius.round,
-    borderWidth: 1.5,
-    borderColor: colors.border,
-    backgroundColor: colors.card,
-  },
-  lvlTabActive: {
-    borderColor: colors.gold,
-    backgroundColor: colors.goldAlpha10,
-  },
-  lvlTabText: {
-    fontSize: 12.5,
-    fontWeight: typography.fontWeight.bold,
-    color: colors.muted,
-  },
-  lvlTabTextActive: {
-    color: colors.gold,
-  },
-  lbCard: {
-    padding: spacing.base,
-  },
-  loadingBox: {
-    paddingVertical: 24,
+  avatar: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  loadingText: {
-    fontSize: 12,
-    color: colors.muted,
-    fontWeight: typography.fontWeight.medium,
+  avatarText: {
+    color: '#fff',
+    fontWeight: typography.fontWeight.extrabold,
+    fontSize: 14,
   },
-  emptyText: {
-    fontSize: 12,
-    color: colors.mutedDim,
-    textAlign: 'center',
-    paddingVertical: 12,
-  },
-  lbRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-    paddingVertical: 13,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.border,
-  },
-  lbRankIcon: {
+  info: { flex: 1, minWidth: 0 },
+  nameRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  name: {
+    flexShrink: 1,
     fontSize: 16,
-    width: 28,
-    textAlign: 'center',
-    fontWeight: typography.fontWeight.bold,
-    color: colors.muted,
-  },
-  lbAvatar: {
-    width: 34,
-    height: 34,
-    borderRadius: 17,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  lbAvatarText: {
-    fontSize: 13,
-    fontWeight: typography.fontWeight.bold,
-    color: '#FFFFFF',
-  },
-  lbInfo: {
-    flex: 1,
-  },
-  modeToggleRow: {
-    flexDirection: 'row',
-    gap: 8,
-    marginBottom: 16,
-  },
-  modeBtn: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 6,
-    paddingVertical: 10,
-    borderRadius: borderRadius.md,
-    backgroundColor: colors.card,
-    borderWidth: 1,
-    borderColor: colors.border,
-  },
-  modeBtnActive: {
-    backgroundColor: colors.teal,
-    borderColor: colors.teal,
-  },
-  modeBtnText: {
-    fontSize: 12.5,
-    fontWeight: typography.fontWeight.bold,
-    color: colors.muted,
-  },
-  modeBtnTextActive: {
-    color: '#04140E',
-  },
-  mySpotlightCard: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    backgroundColor: colors.tealAlpha10,
-    borderWidth: 1.5,
-    borderColor: colors.tealAlpha35,
-    borderRadius: borderRadius.lg,
-    padding: 14,
-    marginBottom: 16,
-  },
-  mySpotlightLeft: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-    flex: 1,
-  },
-  myRankBadge: {
-    width: 38,
-    height: 38,
-    borderRadius: 19,
-    backgroundColor: colors.teal,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  myRankText: {
-    fontSize: 14,
-    fontWeight: typography.fontWeight.extrabold,
-    color: '#04140E',
-  },
-  mySpotlightName: {
-    fontSize: 13.5,
     fontWeight: typography.fontWeight.bold,
     color: colors.text,
   },
-  mySpotlightSub: {
-    fontSize: 11,
-    color: colors.muted,
-    marginTop: 1,
-  },
-  mySpotlightScore: {
-    alignItems: 'flex-end',
-    marginLeft: 10,
-  },
-  mySpotlightScoreVal: {
-    fontSize: 14,
-    fontWeight: typography.fontWeight.extrabold,
-    color: colors.teal,
-  },
-  mySpotlightScoreSub: {
-    fontSize: 10,
-    color: colors.mutedDim,
-    marginTop: 1,
-  },
-  lbRowMe: {
-    backgroundColor: colors.tealAlpha10,
-    marginHorizontal: -spacing.base,
-    paddingHorizontal: spacing.base,
-    borderLeftWidth: 3,
-    borderLeftColor: colors.teal,
-  },
-  lbRankTop: {
-    fontSize: 18,
-  },
-  lbNameMe: {
-    color: colors.teal,
-  },
-  youBadge: {
-    backgroundColor: colors.teal,
-    paddingHorizontal: 5,
-    paddingVertical: 1.5,
-    borderRadius: 4,
-  },
-  youBadgeText: {
-    fontSize: 9,
-    fontWeight: typography.fontWeight.extrabold,
-    color: '#04140E',
-  },
-  lbInst: {
-    fontSize: 11,
-    color: colors.muted,
-    marginTop: 1,
-  },
-  lbName: {
-    fontSize: 13,
-    fontWeight: typography.fontWeight.bold,
-    color: colors.text,
-  },
-  lbTime: {
-    fontSize: 9.5,
-    color: colors.mutedDim,
-    marginTop: 2,
-  },
-  lbScoreBadge: {
-    backgroundColor: colors.tealAlpha10,
+  youPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: 'rgba(251,191,36,0.2)',
     borderWidth: 1,
-    borderColor: colors.tealAlpha35,
-    paddingVertical: 5,
-    paddingHorizontal: 10,
-    borderRadius: borderRadius.round,
+    borderColor: 'rgba(251,191,36,0.4)',
+    borderRadius: 999,
+    paddingHorizontal: 9,
+    paddingVertical: 3,
   },
-  lbScoreText: {
+  youPillText: {
     fontSize: 12,
     fontWeight: typography.fontWeight.extrabold,
+    color: '#FCD34D',
+  },
+  school: { fontSize: 13, color: colors.muted, marginTop: 2 },
+  xpPill: {
+    backgroundColor: 'rgba(16,185,129,0.12)',
+    borderWidth: 1,
+    borderColor: 'rgba(16,185,129,0.3)',
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+  },
+  xpText: {
+    fontSize: 14,
+    fontWeight: typography.fontWeight.extrabold,
     color: colors.teal,
+    fontVariant: ['tabular-nums'],
   },
-  lbScoreBadgeMe: {
-    backgroundColor: colors.teal,
+  viralCard: {
+    flexDirection: 'row',
+    gap: 12,
+    marginTop: 12,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: 'rgba(245,158,11,0.28)',
+    backgroundColor: 'rgba(245,158,11,0.08)',
+    padding: 18,
   },
-  lbScoreTextMe: {
-    color: '#04140E',
+  viralIcon: {
+    width: 48,
+    height: 48,
+    borderRadius: 14,
+    backgroundColor: 'rgba(245,158,11,0.18)',
+    borderWidth: 1,
+    borderColor: 'rgba(245,158,11,0.3)',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
+  viralTitleRow: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: 8 },
+  viralTitle: {
+    fontSize: 16,
+    fontWeight: typography.fontWeight.bold,
+    color: colors.text,
+  },
+  xpBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: 'rgba(245,158,11,0.18)',
+    borderWidth: 1,
+    borderColor: 'rgba(245,158,11,0.3)',
+    borderRadius: 999,
+    paddingHorizontal: 9,
+    paddingVertical: 4,
+  },
+  xpBadgeText: {
+    fontSize: 12,
+    fontWeight: typography.fontWeight.bold,
+    color: '#FCD34D',
+  },
+  viralBody: { fontSize: 13.5, color: colors.muted, marginTop: 6, lineHeight: 20 },
 });

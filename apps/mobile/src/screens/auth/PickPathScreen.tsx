@@ -255,7 +255,7 @@ export const PickPathScreen: React.FC<PickPathScreenProps> = ({ navigation }) =>
           </TouchableOpacity>
 
           <Text style={styles.hintTxt}>
-            Slots 9 &amp; 10 · choosing a track locks in both of its subjects together.
+            Slots 9 & 10 · choosing a track locks in both of its subjects together.
           </Text>
         </Card>
 
@@ -402,7 +402,7 @@ const styles = StyleSheet.create({
     marginBottom: 14,
   },
   lockedHeader: {
-    fontSize: 10.5,
+    fontSize: 12.5,
     fontWeight: typography.fontWeight.extrabold,
     letterSpacing: 0.6,
     color: colors.teal,
@@ -425,25 +425,25 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(255,255,255,0.015)',
   },
   chipText: {
-    fontSize: 12,
+    fontSize: 13.5,
     fontWeight: typography.fontWeight.bold,
     color: colors.text,
   },
   ckBox: {
-    width: 14,
-    height: 14,
+    width: 16,
+    height: 16,
     borderRadius: 4,
     backgroundColor: '#FFFFFF',
     alignItems: 'center',
     justifyContent: 'center',
   },
   ckMark: {
-    fontSize: 9,
+    fontSize: 11,
     fontWeight: typography.fontWeight.black,
     color: '#0B0E14',
   },
   ckMarkDark: {
-    fontSize: 10,
+    fontSize: 11,
     fontWeight: typography.fontWeight.black,
     color: '#0B0E14',
   },
@@ -452,14 +452,14 @@ const styles = StyleSheet.create({
     marginBottom: 14,
   },
   trackHeader: {
-    fontSize: 10.5,
+    fontSize: 12.5,
     fontWeight: typography.fontWeight.extrabold,
     letterSpacing: 0.6,
     color: colors.amber,
     marginBottom: 2,
   },
   trackSub: {
-    fontSize: 10.5,
+    fontSize: 12.5,
     color: colors.mutedDim,
     marginBottom: 10,
   },
@@ -561,7 +561,7 @@ const styles = StyleSheet.create({
     borderColor: colors.purple,
   },
   hintTxt: {
-    fontSize: 10.5,
+    fontSize: 12.5,
     color: colors.mutedDim,
     marginTop: 6,
   },
@@ -576,7 +576,7 @@ const styles = StyleSheet.create({
     marginBottom: 10,
   },
   lineupTitle: {
-    fontSize: 14,
+    fontSize: 16,
     fontWeight: typography.fontWeight.extrabold,
     color: colors.text,
   },

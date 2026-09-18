@@ -3,6 +3,8 @@ import { UserProfile } from '@edudeca/types';
 import { edudecaApi } from './edudecaApi';
 import {
   assertProfileWriteSucceeded,
+  honestProfileText,
+  level4ConsentFromProfile,
   toEdudecaProfileRow,
 } from './studentLoop/profileColumns';
 
@@ -39,14 +41,14 @@ export const userService = {
 
     return {
       id: profile.id,
-      name: profile.full_name || profile.name || 'Whiz Student',
+      name: honestProfileText(profile.full_name || profile.name).replace(/^—$/, '') || 'Student',
       email: profile.email || '',
       classGrade: profile.class_level === 12 ? 'Class 12' : 'Class 11',
       scienceStream: true,
       institution: profile.institution_name || '',
       state: profile.state || '',
       city: profile.city || '',
-      level4Consent: profile.level4_consent ?? true,
+      level4Consent: level4ConsentFromProfile(profile),
       selectedTrack: (profile.selected_track as any) || 'A',
       level: progress.campaignLevel ?? progress.campaign_level ?? profile.level ?? 0,
       streak: progress.streakDays ?? progress.streak ?? 0,
@@ -77,14 +79,14 @@ export const userService = {
 
     return {
       id: uid || 'local_user',
-      name: profileUpdate.name || 'Whiz Student',
+      name: profileUpdate.name || 'Student',
       email: profileUpdate.email || '',
       classGrade: profileUpdate.classGrade === 'Class 12' ? 'Class 12' : 'Class 11',
       scienceStream: true,
       institution: profileUpdate.institution || '',
       state: profileUpdate.state || '',
       city: profileUpdate.city || '',
-      level4Consent: profileUpdate.level4Consent ?? true,
+      level4Consent: profileUpdate.level4Consent === true,
       selectedTrack: profileUpdate.selectedTrack || 'A',
       level: profileUpdate.level ?? 0,
       streak: profileUpdate.streak ?? 0,

@@ -223,4 +223,14 @@ export const edudecaApi = {
   getTrials: () => edudecaFetch<TrialResponse>('/challenge/trials'),
 
   getMockAttempts: () => edudecaFetch<{ attempts: MockAttempt[] }>('/mock-attempts'),
+
+  getLeaderboard: () => edudecaFetch<{ rows: unknown[] }>('/leaderboard'),
+
+  getReferralMine: () => edudecaFetch<unknown>('/referral/mine'),
+
+  claimReferral: (ref: string) =>
+    edudecaFetch<unknown>('/referral/claim', {
+      method: 'POST',
+      body: { ref },
+    }),
 };

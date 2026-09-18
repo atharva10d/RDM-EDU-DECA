@@ -1,4 +1,4 @@
-﻿import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import {
   View,
   Text,
@@ -261,14 +261,14 @@ export const SignInScreen: React.FC<SignInScreenProps> = ({ navigation }) => {
 
         {/* Final Step Badge & Header */}
         <View style={styles.finalBadge}>
-          <Text style={styles.finalBadgeText}>ðŸ FINAL STEP Â· SIGN IN</Text>
+          <Text style={styles.finalBadgeText}>🏁 FINAL STEP · SIGN IN</Text>
         </View>
 
         <Text style={styles.whizLine}>
-          ðŸ† Continue your journey to become a chosen Whiz360
+          🏆 Continue your journey to become a chosen Whiz360
         </Text>
 
-        <Text style={styles.signInH1}>Start Today â€¦</Text>
+        <Text style={styles.signInH1}>Start Today…</Text>
         <Text style={styles.signInSub}>
           Enter your details and continue with Google to join EduDeca.
         </Text>
@@ -420,7 +420,7 @@ export const SignInScreen: React.FC<SignInScreenProps> = ({ navigation }) => {
             <View style={styles.streamWarn}>
               <AlertTriangle size={14} color="#FFAFA0" />
               <Text style={styles.streamWarnText}>
-                âš ï¸ Only for Science Stream students.
+                Only for Science Stream students.
               </Text>
             </View>
           )}
@@ -446,7 +446,7 @@ export const SignInScreen: React.FC<SignInScreenProps> = ({ navigation }) => {
               {level4Consent && <Check size={12} color="#04140E" strokeWidth={3.5} />}
             </View>
             <Text style={styles.chkLabel}>
-              I understand I need approval &amp; support from my Institution from{' '}
+              I understand I need approval & support from my Institution from{' '}
               <Text style={{ color: colors.text, fontWeight: '700' }}>Level-4</Text> onwards.
             </Text>
           </TouchableOpacity>
@@ -613,7 +613,7 @@ export const SignInScreen: React.FC<SignInScreenProps> = ({ navigation }) => {
           <View style={styles.modalPanel}>
             <View style={styles.modalHeaderRow}>
               <Text style={styles.modalTitle}>
-                Select District Â· {selectedState}
+                Select District · {selectedState}
               </Text>
               <TouchableOpacity onPress={() => setShowCityModal(false)}>
                 <X size={20} color={colors.text} />
@@ -699,13 +699,13 @@ const styles = StyleSheet.create({
     marginBottom: 12,
   },
   finalBadgeText: {
-    fontSize: 10.5,
+    fontSize: 12.5,
     fontWeight: typography.fontWeight.extrabold,
     color: colors.teal,
   },
   whizLine: {
     textAlign: 'center',
-    fontSize: 11.5,
+    fontSize: 13.5,
     fontWeight: typography.fontWeight.bold,
     color: colors.gold,
     marginBottom: 18,
@@ -720,14 +720,14 @@ const styles = StyleSheet.create({
   signInSub: {
     textAlign: 'center',
     color: colors.muted,
-    fontSize: 12.5,
+    fontSize: 14,
     marginBottom: 20,
   },
   field: {
     marginBottom: 18,
   },
   fieldLabel: {
-    fontSize: 12.5,
+    fontSize: 14,
     fontWeight: typography.fontWeight.bold,
     color: colors.text,
     marginBottom: 9,
@@ -980,24 +980,24 @@ const styles = StyleSheet.create({
     fontWeight: typography.fontWeight.regular,
   },
   fieldHint: {
-    fontSize: 10.5,
+    fontSize: 12,
     color: colors.mutedDim,
     marginTop: 5,
-    lineHeight: 14,
+    lineHeight: 16,
   },
   lockedChip: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 3,
+    gap: 4,
     backgroundColor: 'rgba(240, 180, 41, 0.12)',
     borderWidth: 1,
     borderColor: 'rgba(240, 180, 41, 0.35)',
-    paddingHorizontal: 6,
-    paddingVertical: 2,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
     borderRadius: 4,
   },
   lockedText: {
-    fontSize: 8.5,
+    fontSize: 11.5,
     fontWeight: typography.fontWeight.extrabold,
     color: colors.gold,
     letterSpacing: 0.3,
@@ -1010,7 +1010,7 @@ const styles = StyleSheet.create({
     borderWidth: 1.5,
     borderColor: colors.tealAlpha35,
     borderRadius: 14,
-    padding: 14,
+    padding: 16,
     marginBottom: 20,
   },
   returningLeft: {
@@ -1018,7 +1018,7 @@ const styles = StyleSheet.create({
     marginRight: 10,
   },
   returningTitle: {
-    fontSize: 13.5,
+    fontSize: 15,
     fontWeight: typography.fontWeight.bold,
     color: colors.teal,
     marginBottom: 3,
