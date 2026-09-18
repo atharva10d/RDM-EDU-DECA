@@ -6,6 +6,8 @@ import { Session } from '@supabase/supabase-js';
 import { supabase } from './lib/supabase';
 import { RootNavigator } from './navigation/RootNavigator';
 import { colors } from '@edudeca/ui';
+import { progressService } from './services/progressService';
+import { userService } from './services/userService';
 import { useAppStore } from './store/useAppStore';
 
 export default function App() {
@@ -13,26 +15,40 @@ export default function App() {
   const [isReady, setIsReady] = useState(false);
 
   useEffect(() => {
-    const syncUserSession = (s: Session | null) => {
-      setSession(s);
-      if (s?.user) {
-        const googleEmail = s.user.email;
-        const googleName = s.user.user_metadata?.full_name || s.user.user_metadata?.name;
-        useAppStore.getState().setUser({
-          ...(googleEmail ? { email: googleEmail } : {}),
-          ...(googleName ? { name: googleName } : {}),
-          id: s.user.id,
-        });
-      } else {
-        useAppStore.getState().resetState();
+    const applySessionUser = (s: Session) => {
+      const googleEmail = s.user.email;
+      const googleName = s.user.user_metadata?.full_name || s.user.user_metadata?.name;
+      useAppStore.getState().setUser({
+        ...(googleEmail ? { email: googleEmail } : {}),
+        ...(googleName ? { name: googleName } : {}),
+        id: s.user.id,
+      });
+    };
+
+    const hydrateSignedIn = async (s: Session) => {
+      applySessionUser(s);
+      try {
+        const profile = await userService.fetchCurrentUser(s.user.id);
+        useAppStore.getState().setUserProfile(profile);
+      } catch {
+        // Profile row may not exist yet for a new account.
+      }
+      try {
+        await progressService.loadProgress();
+      } catch {
+        // Progress hydrate is best-effort; the session still stands.
       }
     };
 
-    // 1. Fetch initial session with error catch
+    // 1. Fetch initial session with error catch. A null getSession must not wipe persisted store.
     supabase.auth
       .getSession()
       .then(({ data }) => {
-        syncUserSession(data?.session ?? null);
+        const s = data?.session ?? null;
+        setSession(s);
+        if (s?.user) {
+          void hydrateSignedIn(s);
+        }
         setIsReady(true);
       })
       .catch((_err) => {
@@ -47,8 +63,18 @@ export default function App() {
     // 3. Listen for auth state changes (login, logout, token refresh)
     const {
       data: { subscription },
-    } = supabase.auth.onAuthStateChange((_event, s) => {
-      syncUserSession(s);
+    } = supabase.auth.onAuthStateChange((event, s) => {
+      if (event === 'SIGNED_OUT') {
+        setSession(null);
+        useAppStore.getState().resetState();
+        return;
+      }
+      setSession(s);
+      if (s?.user && (event === 'SIGNED_IN' || event === 'INITIAL_SESSION' || event === 'USER_UPDATED')) {
+        void hydrateSignedIn(s);
+      } else if (s?.user && event === 'TOKEN_REFRESHED') {
+        applySessionUser(s);
+      }
     });
 
     return () => {

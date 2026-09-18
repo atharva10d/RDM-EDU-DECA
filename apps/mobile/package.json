@@ -11,7 +11,7 @@
     "ios": "expo start --ios",
     "web": "expo start --web",
     "type-check": "tsc --noEmit",
-    "test": "pnpm dlx tsx --test src/navigation/isMainAuthenticated.test.ts src/services/studentLoop/profileGate.test.ts src/services/studentLoop/profileColumns.test.ts src/services/studentLoop/mapChallengeQuestion.test.ts src/services/studentLoop/challengeCompletePayload.test.ts src/lib/googleSignInMode.test.ts"
+    "test": "pnpm dlx tsx --test src/navigation/isMainAuthenticated.test.ts src/services/studentLoop/profileGate.test.ts src/services/studentLoop/profileColumns.test.ts src/services/studentLoop/mapChallengeQuestion.test.ts src/services/studentLoop/challengeCompletePayload.test.ts src/services/studentLoop/applyServerProgress.test.ts src/services/studentLoop/quizResults.test.ts src/lib/googleSignInMode.test.ts"
   },
   "dependencies": {
     "@babel/runtime": "^7.26.0",

@@ -19,6 +19,7 @@ import { ArrowLeft } from 'lucide-react-native';
 import { useAppStore } from '../../store/useAppStore';
 import { edudecaApi, EdudecaApiError } from '../../services/edudecaApi';
 import { progressService } from '../../services/progressService';
+import { applyServerProgress } from '../../services/studentLoop/applyServerProgress';
 import {
   appendPendingResult,
   buildChallengeCompletePayload,
@@ -223,14 +224,24 @@ export const QuizScreen: React.FC<QuizScreenProps> = ({ navigation, route }) => 
         }),
       );
       completeSucceeded = true;
-      try {
-        await progressService.loadProgress();
-      } catch (loadErr) {
-        console.warn('[QuizScreen] Failed to refresh progress after challenge complete:', loadErr);
+      if (response?.progress) {
+        useAppStore.getState().setProgress({
+          ...applyServerProgress(response.progress),
+          ...(typeof response.trials?.remaining === 'number'
+            ? { trialsRemaining: response.trials.remaining }
+            : {}),
+        });
+      } else if (typeof response?.trials?.remaining === 'number') {
+        useAppStore.getState().setProgress({
+          trialsRemaining: response.trials.remaining,
+        });
       }
+      void progressService.loadProgress().catch((loadErr) => {
+        console.warn('[QuizScreen] Failed to refresh progress after challenge complete:', loadErr);
+      });
       const accuracy = questions.length > 0 ? Math.round((scoreSnapshot / questions.length) * 100) : 0;
       const nextLevel = response?.progress?.campaignLevel;
-      const xpEarned = response?.progress?.xp ?? scoreSnapshot * 10;
+      const xpEarned = scoreSnapshot * 10;
       navigation.replace('Results', {
         score: scoreSnapshot,
         total: questions.length,
@@ -260,16 +271,8 @@ export const QuizScreen: React.FC<QuizScreenProps> = ({ navigation, route }) => 
       if (action.title !== 'Challenge Locked') {
         Alert.alert(action.title, action.message, [{ text: 'OK', onPress: () => navigation.navigate(action.navigate as any) }]);
       } else {
-        const retryReason = lastEndReasonRef.current;
         Alert.alert('Submission Error', err?.message || 'Failed to submit challenge results.', [
-          {
-            text: 'OK',
-            onPress: () => {
-              if (retryReason !== null) {
-                handleEndChallenge(retryReason);
-              }
-            },
-          },
+          { text: 'OK' },
         ]);
       }
     }
