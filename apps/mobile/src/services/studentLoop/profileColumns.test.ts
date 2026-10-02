@@ -6,6 +6,7 @@ import {
   honestProfileText,
   level4ConsentFromProfile,
   toEdudecaProfileRow,
+  typedProfileField,
 } from "./profileColumns";
 
 describe("toEdudecaProfileRow", () => {
@@ -58,5 +59,15 @@ describe("honestProfileText", () => {
     assert.equal(honestProfileText("All India"), "—");
     assert.equal(honestProfileText("Whiz Student"), "—");
     assert.equal(honestProfileText("Ryan International"), "Ryan International");
+    assert.equal(honestProfileText("Student"), "—");
+  });
+});
+
+describe("typedProfileField", () => {
+  it("leaves name and college empty so the student must type them", () => {
+    assert.equal(typedProfileField("Student"), "");
+    assert.equal(typedProfileField("Viswa Vignan"), "");
+    assert.equal(typedProfileField("Whiz Student"), "");
+    assert.equal(typedProfileField("Ada Lovelace"), "Ada Lovelace");
   });
 });

@@ -22,6 +22,8 @@ import { userService } from '../../services/userService';
 import { progressService } from '../../services/progressService';
 import { useAppStore } from '../../store/useAppStore';
 import { isProfileGateComplete } from '../../services/studentLoop/profileGate';
+import { shouldReuseSupabaseSession } from '../../services/studentLoop/reuseSupabaseSession';
+import { supabase } from '../../lib/supabase';
 
 type HomeScreenNavigationProp = NativeStackNavigationProp<AuthStackParamList, 'Home'>;
 
@@ -81,7 +83,10 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({ navigation }) => {
     setIsSigningIn(true);
 
     try {
-      const session = await signInWithGoogle();
+      const existing = (await supabase.auth.getSession()).data.session;
+      const session = shouldReuseSupabaseSession(existing, Date.now() / 1000, 'choose_account')
+        ? existing
+        : await signInWithGoogle();
       if (!session?.user) {
         throw new Error('Google Sign-In did not complete.');
       }

@@ -1,8 +1,9 @@
-﻿import { create } from 'zustand';
+import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
 import * as SecureStore from 'expo-secure-store';
 import { TrackType, UserProfile } from '@edudeca/types';
 import { displayReferralCode } from '../services/studentLoop/displayReferralCode';
+import { trackFromLineup } from '../services/studentLoop/lineupPath';
 import {
   APP_PERSIST_NAME,
   APP_PERSIST_VERSION,
@@ -60,6 +61,8 @@ interface AppState {
   todayCompleted: boolean;
   freeZoneComplete: boolean;
   disciplines: string[];
+  pendingPathTrack: TrackType | null;
+  setPendingPathTrack: (track: TrackType | null) => void;
   trialsRemaining: number;
   setProgress: (progress: Partial<AppState>) => void;
   resetState: () => void;
@@ -94,6 +97,7 @@ const initialSlice = {
   todayCompleted: false,
   freeZoneComplete: false,
   disciplines: [] as string[],
+  pendingPathTrack: null as TrackType | null,
   trialsRemaining: 10,
 };
 
@@ -138,7 +142,9 @@ export const useAppStore = create<AppState>()(
           rdmBalance: profile.rdmBalance ?? 0,
           streak: profile.streak ?? 0,
           quizzesCompleted: profile.quizzesCompleted ?? 0,
-          selectedTrack: profile.selectedTrack || 'A',
+          selectedTrack:
+            trackFromLineup(state.disciplines) ??
+            (profile.selectedTrack === 'B' ? 'B' : state.selectedTrack),
         })),
 
       updateUserStats: (stats) =>
@@ -160,6 +166,8 @@ export const useAppStore = create<AppState>()(
           selectedTrack: track,
           user: { ...state.user, selectedTrack: track },
         })),
+
+      setPendingPathTrack: (track) => set({ pendingPathTrack: track }),
 
       incrementLevel: () =>
         set((state) => {

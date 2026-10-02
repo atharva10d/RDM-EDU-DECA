@@ -5,15 +5,15 @@ import {
 
 export const DEFAULT_DISCIPLINES: Discipline[] = [
   { id: 'phy', name: 'Physics', tag: 'PHY', color: 'teal', isLocked: true },
-  { id: 'chem', name: 'Chemistry', tag: 'CHEM', color: 'amber', isLocked: true },
-  { id: 'verb', name: 'Verbal', tag: 'VERB', color: 'teal', isLocked: true },
-  { id: 'quant', name: 'Quant', tag: 'QUANT', color: 'teal', isLocked: true },
-  { id: 'analyt', name: 'Analytical', tag: 'ANLYT', color: 'purple', isLocked: true },
+  { id: 'che', name: 'Chemistry', tag: 'CHEM', color: 'amber', isLocked: true },
+  { id: 'eng', name: 'English', tag: 'VERB', color: 'teal', isLocked: true },
+  { id: 'eco', name: 'Economics', tag: 'QUANT', color: 'teal', isLocked: true },
+  { id: 'log', name: 'Logical Reasoning', tag: 'ANLYT', color: 'purple', isLocked: true },
   { id: 'gk', name: 'GK', tag: 'GK', color: 'gold', isLocked: true },
   { id: 'fin', name: 'FinLit', tag: 'FIN', color: 'pink', isLocked: true },
   { id: 'ent', name: 'Entrep', tag: 'ENT', color: 'gold', isLocked: true },
-  { id: 'math', name: 'Mathematics', tag: 'MATH', color: 'teal', track: 'A' },
-  { id: 'appliedmath', name: 'Applied Math', tag: 'AMATH', color: 'teal', track: 'A' },
+  { id: 'mat', name: 'Mathematics', tag: 'MATH', color: 'teal', track: 'A' },
+  { id: 'amat', name: 'Applied Math', tag: 'AMATH', color: 'teal', track: 'A' },
   { id: 'bio', name: 'Biology', tag: 'BIO', color: 'teal', track: 'B' },
   { id: 'biotech', name: 'Biotech', tag: 'BTC', color: 'purple', track: 'B' },
 ];

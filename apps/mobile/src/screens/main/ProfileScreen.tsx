@@ -19,7 +19,10 @@ import { DashboardStackParamList } from '../../navigation/types';
 import { colors, typography, borderRadius, spacing, Button, Card } from '@edudeca/ui';
 import { useAppStore } from '../../store/useAppStore';
 import { userService, referralService } from '../../services';
+import { progressService } from '../../services/progressService';
+import { lineupForTrack } from '../../services/studentLoop/lineupPath';
 import { supabase } from '../../lib/supabase';
+import { signOutGoogleAndSupabase } from '../../lib/googleAuth';
 import * as Clipboard from 'expo-clipboard';
 import { displayReferralCode } from '../../services/studentLoop/displayReferralCode';
 import { edudecaInviteMessage } from '../../services/studentLoop/edudecaInviteMessage';
@@ -141,11 +144,10 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({ navigation }) => {
     };
 
     try {
-      // Update local state immediately
       setUser(updatedData);
       setSelectedTrack(editTrack);
-
-      // Sync to Supabase backend database
+      const lineup = lineupForTrack(editTrack, useAppStore.getState().disciplines);
+      await progressService.saveDisciplines(lineup);
       await userService.updateUserProfile(updatedData, user?.id);
       setEditModalVisible(false);
       Alert.alert('Success', 'Profile updated successfully! 🎉');
@@ -196,7 +198,7 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({ navigation }) => {
         style: 'destructive',
         onPress: async () => {
           try {
-            await supabase.auth.signOut();
+            await signOutGoogleAndSupabase();
           } catch (_err) {
             // Ignored
           }

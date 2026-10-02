@@ -1,5 +1,6 @@
 import type { TrackType } from '@edudeca/types';
 import { displayReferralCode } from '../services/studentLoop/displayReferralCode';
+import { canonicalLineup } from '../services/studentLoop/lineupPath';
 
 export const APP_PERSIST_NAME = 'edudeca-user-storage';
 export const APP_PERSIST_VERSION = 2;
@@ -19,6 +20,7 @@ export type PersistedUserSlice = {
 export type PersistedAppSlice = {
   user: PersistedUserSlice;
   selectedTrack: TrackType;
+  pendingPathTrack: TrackType | null;
   disciplines: string[];
   campaignLevel: number;
   todayCompleted: boolean;
@@ -37,6 +39,7 @@ export type PersistableSnapshot = {
     id?: string;
   };
   selectedTrack?: TrackType;
+  pendingPathTrack?: TrackType | null;
   disciplines?: string[];
   campaignLevel?: number;
   todayCompleted?: boolean;
@@ -60,6 +63,7 @@ const DEFAULT_SLICE: PersistedAppSlice = {
     referralCode: '',
   },
   selectedTrack: 'A',
+  pendingPathTrack: null,
   disciplines: [],
   campaignLevel: 1,
   todayCompleted: false,
@@ -83,6 +87,11 @@ function persistReferral(code: string | null | undefined): string {
 function asTrack(value: unknown): TrackType {
   if (value === 'A' || value === 'B' || value === null) return value;
   return 'A';
+}
+
+function asPendingTrack(value: unknown): TrackType | null {
+  if (value === 'A' || value === 'B') return value;
+  return null;
 }
 
 function asString(value: unknown, fallback = ''): string {
@@ -112,8 +121,9 @@ export function partializeAppPersist<T extends object>(state: T): PersistedAppSl
       referralCode: persistReferral(user.referralCode),
     },
     selectedTrack: asTrack(snapshot.selectedTrack),
+    pendingPathTrack: asPendingTrack(snapshot.pendingPathTrack),
     disciplines: Array.isArray(snapshot.disciplines)
-      ? snapshot.disciplines.filter((id): id is string => typeof id === 'string')
+      ? canonicalLineup(snapshot.disciplines)
       : [],
     campaignLevel: asNumber(snapshot.campaignLevel, 1),
     todayCompleted: asBoolean(snapshot.todayCompleted, false),

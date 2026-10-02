@@ -19,4 +19,17 @@ describe("mapChallengeQuestion", () => {
     assert.equal(mapped.correctIndex, 0);
     assert.deepEqual(mapped.options, ["Newton", "Joule", "Watt", "Pascal"]);
   });
+
+  it("expands assertion–reason letter keys without moving the correct index", () => {
+    const mapped = mapChallengeQuestion({
+      id: "q-log-1",
+      subjectId: "log",
+      stem: "Assertion: All metals are magnetic. Reason: Iron is magnetic.",
+      options: ["C", "D", "B", "A"],
+      correctIndex: 1,
+    });
+    assert.equal(mapped.correctIndex, 1);
+    assert.equal(mapped.options[1], "Assertion is false, but Reason is true.");
+    assert.equal(mapped.tag, "ANALYTICAL");
+  });
 });

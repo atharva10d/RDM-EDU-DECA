@@ -14,6 +14,7 @@ import { RouteProp } from '@react-navigation/native';
 import { DashboardStackParamList } from '../../navigation/types';
 import { colors, typography, borderRadius, Button, Card } from '@edudeca/ui';
 import { useAppStore } from '../../store/useAppStore';
+import { formatTrialsLeft } from '../../services/studentLoop/trialsCopy';
 import { MessageCircle, Instagram, Zap, Award, AlertCircle } from 'lucide-react-native';
 
 type ResultsScreenNavigationProp = NativeStackNavigationProp<DashboardStackParamList, 'Results'>;
@@ -54,10 +55,10 @@ export const ResultsScreen: React.FC<ResultsScreenProps> = ({ navigation, route 
   } else {
     if (trialsRemaining > 0) {
       title = 'Try Again';
-      subText = `${trialsRemaining} attempts left today.`;
+      subText = formatTrialsLeft(trialsRemaining) + '.';
     } else {
       title = 'Attempts Exhausted';
-      subText = 'No more attempts today. Come back tomorrow.';
+      subText = 'No more trials left on this level.';
     }
   }
 

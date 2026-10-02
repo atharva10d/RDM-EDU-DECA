@@ -8,6 +8,7 @@ import { supabase } from './supabase';
 type NativeGoogle = {
   hasPlayServices: (opts?: { showPlayServicesUpdateDialog?: boolean }) => Promise<unknown>;
   signIn: () => Promise<{ data?: { idToken?: string }; idToken?: string }>;
+  signOut?: () => Promise<void>;
   configure?: (opts: { webClientId: string; offlineAccess: boolean }) => void;
 };
 
@@ -51,10 +52,19 @@ async function sessionFromIdToken(idToken: string): Promise<Session> {
   return data.session;
 }
 
+async function signOutNativeGoogle(): Promise<void> {
+  try {
+    await GoogleSignin?.signOut?.();
+  } catch {
+    // Cached Google user may already be signed out.
+  }
+}
+
 async function signInWithGoogleNative(): Promise<Session> {
   if (!canUseNativeGoogle() || !GoogleSignin) {
     throw new Error('Native Google Sign-In is unavailable');
   }
+  await signOutNativeGoogle();
   await GoogleSignin.hasPlayServices({ showPlayServicesUpdateDialog: true });
   const response = await GoogleSignin.signIn();
   const idToken = response.data?.idToken || response.idToken;
@@ -67,4 +77,13 @@ export async function signInWithGoogle(): Promise<Session> {
     throw new Error('Google Sign-In requires the EduDeca development APK, not Expo Go.');
   }
   return signInWithGoogleNative();
+}
+
+export async function signOutGoogleAndSupabase(): Promise<void> {
+  await signOutNativeGoogle();
+  try {
+    await supabase.auth.signOut();
+  } catch {
+    // Local store reset still proceeds after this helper.
+  }
 }

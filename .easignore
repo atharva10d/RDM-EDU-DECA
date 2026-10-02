@@ -1,0 +1,17 @@
+# Keep EAS uploads small (EAS reinstalls node_modules on the builder)
+node_modules
+**/node_modules
+.pnpm-store
+.turbo
+.expo
+**/.expo
+.git
+*.log
+.env
+.env.local
+.superpowers
+apps/mobile/android/.gradle
+apps/mobile/android/build
+apps/mobile/android/app/build
+**/*.hprof
+**/.cxx

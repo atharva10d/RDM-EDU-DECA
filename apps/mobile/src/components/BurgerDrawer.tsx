@@ -12,7 +12,7 @@ import {
   Platform,
 } from 'react-native';
 import { colors, typography, borderRadius, spacing } from '@edudeca/ui';
-import { supabase } from '../lib/supabase';
+import { signOutGoogleAndSupabase } from '../lib/googleAuth';
 import { useAppStore } from '../store/useAppStore';
 import {
   Home,
@@ -62,7 +62,7 @@ export const BurgerDrawer: React.FC<BurgerDrawerProps> = ({
   const handleSignOut = async () => {
     onClose();
     try {
-      await supabase.auth.signOut();
+      await signOutGoogleAndSupabase();
     } catch (_err) {
       // Ignored
     }

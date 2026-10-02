@@ -1,9 +1,10 @@
-﻿/**
+/**
  * EduDeca website REST client — same routes as EduDeca Next.js (`/api/*`).
  * Auth: Supabase access token as `Authorization: Bearer`.
  */
 import { env } from '../lib/env';
 import { supabase } from '../lib/supabase';
+import { shouldClearSessionOnApiStatus } from './studentLoop/shouldClearSessionOnApiStatus';
 
 const EDUDECA_API_BASE = env.edudecaApiUrl;
 
@@ -56,6 +57,7 @@ async function edudecaFetch<T>(endpoint: string, options: EdudecaApiOptions = {}
 
   if (accessToken) {
     headers.Authorization = `Bearer ${accessToken}`;
+    headers['x-supabase-authorization'] = `Bearer ${accessToken}`;
   }
 
   const response = await fetch(url, {
@@ -75,7 +77,7 @@ async function edudecaFetch<T>(endpoint: string, options: EdudecaApiOptions = {}
         ? data.message
         : null) ||
       `API Error ${response.status}`;
-    if (response.status === 401) {
+    if (shouldClearSessionOnApiStatus(response.status)) {
       await supabase.auth.signOut();
     }
     throw new EdudecaApiError(errMsg, response.status, data);
@@ -209,9 +211,14 @@ export const edudecaApi = {
 
   getChallengeAvailability: () => edudecaFetch<ChallengeAvailability>('/challenge/availability'),
 
-  getChallengeQuestions: (level: number) =>
+  getChallengeQuestions: (level: number, disciplines?: string[]) =>
     edudecaFetch<{ questions: ChallengeQuestion[] }>('/challenge/questions', {
-      params: { level },
+      params: {
+        level,
+        ...(disciplines && disciplines.length > 0
+          ? { disciplines: disciplines.join(',') }
+          : {}),
+      },
     }),
 
   completeChallenge: (payload: ChallengeCompletePayload) =>

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useCallback } from 'react';
 import {
   View,
   Text,
@@ -10,6 +10,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import { useFocusEffect } from '@react-navigation/native';
 import { DashboardStackParamList } from '../../navigation/types';
 import { colors, typography, borderRadius, spacing } from '@edudeca/ui';
 import { DEFAULT_DISCIPLINES } from '../../utils/mockData';
@@ -23,6 +24,8 @@ import {
   challengeMaxStrikes,
   challengeSessionDurationSec,
 } from '../../services/studentLoop/challengeSpec';
+import { formatTrialsLeft } from '../../services/studentLoop/trialsCopy';
+import { lineupForHome } from '../../services/studentLoop/lineupPath';
 
 type DashboardScreenNavigationProp = NativeStackNavigationProp<DashboardStackParamList, 'Dashboard'>;
 
@@ -41,11 +44,12 @@ export const DashboardScreen: React.FC<DashboardScreenProps> = ({ navigation }) 
   const selectedTrack = useAppStore((state) => state.selectedTrack);
   const setUserProfile = useAppStore((state) => state.setUserProfile);
   const campaignLevel = useAppStore((state) => state.campaignLevel);
-  const todayCompleted = useAppStore((state) => state.todayCompleted);
   const freeZoneComplete = useAppStore((state) => state.freeZoneComplete);
   const trialsRemaining = useAppStore((state) => state.trialsRemaining);
+  const storedLineup = useAppStore((state) => state.disciplines);
+  const pendingPathTrack = useAppStore((state) => state.pendingPathTrack);
 
-  // Sync API state on mount and pull-to-refresh
+  // Sync API state on mount, returning to Home, and pull-to-refresh
   const loadUserData = useCallback(async () => {
     try {
       await progressService.loadProgress();
@@ -58,9 +62,11 @@ export const DashboardScreen: React.FC<DashboardScreenProps> = ({ navigation }) 
     }
   }, [user?.id, setUserProfile]);
 
-  useEffect(() => {
-    loadUserData();
-  }, [loadUserData]);
+  useFocusEffect(
+    useCallback(() => {
+      void loadUserData();
+    }, [loadUserData]),
+  );
 
   const onRefresh = async () => {
     setRefreshing(true);
@@ -71,13 +77,38 @@ export const DashboardScreen: React.FC<DashboardScreenProps> = ({ navigation }) 
   const { width: windowWidth } = useWindowDimensions();
   const cardWidth = Math.floor((windowWidth - 36 - 16) / 3);
 
-  // Guarantee all 10 active disciplines based on selected track (A: Math/AMath, B: Bio/Biotech)
+  const DISCIPLINE_LABELS: Record<string, { name: string; tag: string; color: string }> = {
+    phy: { name: 'Physics', tag: 'PHY', color: 'teal' },
+    che: { name: 'Chemistry', tag: 'CHEM', color: 'amber' },
+    ent: { name: 'Entrepreneurship', tag: 'ENT', color: 'gold' },
+    eng: { name: 'English', tag: 'VERB', color: 'blue' },
+    eco: { name: 'Economics', tag: 'QUANT', color: 'amber' },
+    log: { name: 'Logical Reasoning', tag: 'ANLYT', color: 'purple' },
+    gk: { name: 'GK', tag: 'GK', color: 'gold' },
+    fin: { name: 'Financial Literacy', tag: 'FIN', color: 'pink' },
+    mat: { name: 'Mathematics', tag: 'MATH', color: 'teal' },
+    amat: { name: 'Applied Mathematics', tag: 'AMATH', color: 'teal' },
+    bio: { name: 'Biology', tag: 'BIO', color: 'teal' },
+    biotech: { name: 'Biotechnology', tag: 'BTC', color: 'purple' },
+  };
+
+  const lineupIds = lineupForHome({
+    pendingTrack: pendingPathTrack,
+    selectedTrack: selectedTrack === 'B' || user?.selectedTrack === 'B' ? 'B' : 'A',
+    disciplines: storedLineup,
+  });
   const effectiveTrack =
-    selectedTrack === 'B' || user?.selectedTrack === 'B' || (user as any)?.stream === 'PCB'
+    pendingPathTrack === 'B' || selectedTrack === 'B' || user?.selectedTrack === 'B'
       ? 'B'
       : 'A';
 
   const activeDisciplines = (() => {
+    if (lineupIds.length === 10) {
+      return lineupIds.map((id) => {
+        const meta = DISCIPLINE_LABELS[id] || { name: id, tag: id.toUpperCase(), color: 'teal' };
+        return { id, name: meta.name, tag: meta.tag, color: meta.color };
+      });
+    }
     const list = DEFAULT_DISCIPLINES.filter(
       (d) => !d.track || d.track === effectiveTrack
     );
@@ -192,7 +223,7 @@ export const DashboardScreen: React.FC<DashboardScreenProps> = ({ navigation }) 
           </View>
           
           <Text style={{ fontSize: 13, color: colors.muted, textAlign: 'center', marginVertical: 8, fontFamily: typography.fontFamily.medium }}>
-            {trialsRemaining} attempts left today
+            {formatTrialsLeft(trialsRemaining)}
           </Text>
 
           {freeZoneComplete ? (
@@ -205,21 +236,22 @@ export const DashboardScreen: React.FC<DashboardScreenProps> = ({ navigation }) 
                 Unlock Level 4 · Priority Access
               </Text>
             </TouchableOpacity>
-          ) : todayCompleted ? (
-            <View style={[styles.startLevelBtn, { backgroundColor: colors.border }]}>
-              <Text style={[styles.startLevelBtnText, { color: colors.mutedDim }]}>
-                Come back tomorrow · Level {campaignLevel + 1} unlocked
-              </Text>
-            </View>
           ) : (
             <TouchableOpacity
               activeOpacity={0.85}
               style={styles.startLevelBtn}
-              onPress={() =>
-                navigation.navigate('Quiz', {
-                  level: campaignLevel,
-                })
-              }
+              onPress={() => {
+                const level = Math.max(1, campaignLevel || 1);
+                const parent = navigation.getParent?.();
+                if (parent) {
+                  parent.navigate('DashboardTab', {
+                    screen: 'Quiz',
+                    params: { level },
+                  });
+                  return;
+                }
+                navigation.navigate('Quiz', { level });
+              }}
             >
               <Text style={styles.startLevelBtnText}>
                 Start Level {campaignLevel} Challenge

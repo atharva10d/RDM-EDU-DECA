@@ -10,6 +10,8 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { AuthStackParamList } from '../../navigation/types';
 import { colors, typography, borderRadius, spacing, Button, Card, Pill } from '@edudeca/ui';
+import { lineupForTrack } from '../../services/studentLoop/lineupPath';
+import { progressService } from '../../services/progressService';
 import { useAppStore } from '../../store/useAppStore';
 import { ArrowLeft } from 'lucide-react-native';
 
@@ -25,12 +27,28 @@ export const PickPathScreen: React.FC<PickPathScreenProps> = ({ navigation }) =>
   const [localTrack, setLocalTrack] = useState<'A' | 'B'>(selectedTrack || 'A');
 
   const handleSelectTrack = (track: 'A' | 'B') => {
+    commitPickedTrack(track);
+  };
+
+  const commitPickedTrack = (track: 'A' | 'B') => {
+    const lineup = lineupForTrack(track, useAppStore.getState().disciplines);
     setLocalTrack(track);
     setSelectedTrack(track);
+    useAppStore.getState().setPendingPathTrack(track);
+    useAppStore.getState().setProgress({
+      disciplines: lineup,
+      selectedTrack: track,
+    });
   };
 
   const handleContinue = () => {
-    setSelectedTrack(localTrack);
+    commitPickedTrack(localTrack);
+    const signedIn = Boolean(useAppStore.getState().user?.id);
+    if (signedIn && navigation?.canGoBack?.()) {
+      void progressService.saveDisciplines(useAppStore.getState().disciplines).catch(() => undefined);
+      navigation.goBack();
+      return;
+    }
     navigation.navigate('SignIn');
   };
 

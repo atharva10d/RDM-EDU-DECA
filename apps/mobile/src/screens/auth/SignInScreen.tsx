@@ -24,6 +24,8 @@ import { supabase } from '../../lib/supabase';
 import { signInWithGoogle } from '../../lib/googleAuth';
 import { progressService } from '../../services/progressService';
 import { userService } from '../../services/userService';
+import { shouldReuseSupabaseSession } from '../../services/studentLoop/reuseSupabaseSession';
+import { typedProfileField } from '../../services/studentLoop/profileColumns';
 
 type SignInScreenNavigationProp = NativeStackNavigationProp<AuthStackParamList, 'SignIn'>;
 
@@ -36,10 +38,7 @@ export const SignInScreen: React.FC<SignInScreenProps> = ({ navigation }) => {
   const setUser = useAppStore((state) => state.setUser);
   const selectedTrack = useAppStore((state) => state.selectedTrack);
 
-  // Form State: Pre-populate with stored details if returning
-  const [fullName, setFullName] = useState<string>(
-    storedUser.name && storedUser.name !== 'Whiz Student' ? storedUser.name : ''
-  );
+  const [fullName, setFullName] = useState<string>(typedProfileField(storedUser.name));
   const [email, setEmail] = useState<string>(
     storedUser.email && storedUser.email !== 'student@edudeca.in' ? storedUser.email : ''
   );
@@ -49,12 +48,8 @@ export const SignInScreen: React.FC<SignInScreenProps> = ({ navigation }) => {
   const [isScienceStream, setIsScienceStream] = useState<boolean>(
     storedUser.scienceStream ?? true
   );
-  const [institution, setInstitution] = useState<string>(
-    storedUser.institution || 'Viswa Vignan'
-  );
-  const [level4Consent, setLevel4Consent] = useState<boolean>(
-    storedUser.level4Consent ?? false
-  );
+  const [institution, setInstitution] = useState<string>(typedProfileField(storedUser.institution));
+  const [level4Consent, setLevel4Consent] = useState<boolean>(false);
   const [selectedState, setSelectedState] = useState<string>(storedUser.state || '');
   const [selectedCity, setSelectedCity] = useState<string>(storedUser.city || '');
   const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
@@ -115,14 +110,9 @@ export const SignInScreen: React.FC<SignInScreenProps> = ({ navigation }) => {
         if (s.user.email) {
           setEmail(s.user.email);
         }
-        const gName = s.user.user_metadata?.full_name || s.user.user_metadata?.name;
-        if (gName && (!fullName || fullName === 'Whiz Student')) {
-          setFullName(gName);
-        }
         setUser({
           id: s.user.id,
           ...(s.user.email ? { email: s.user.email } : {}),
-          ...(gName ? { name: gName } : {}),
         });
       }
     });
@@ -135,14 +125,9 @@ export const SignInScreen: React.FC<SignInScreenProps> = ({ navigation }) => {
         if (s.user.email) {
           setEmail(s.user.email);
         }
-        const gName = s.user.user_metadata?.full_name || s.user.user_metadata?.name;
-        if (gName && (!fullName || fullName === 'Whiz Student')) {
-          setFullName(gName);
-        }
         setUser({
           id: s.user.id,
           ...(s.user.email ? { email: s.user.email } : {}),
-          ...(gName ? { name: gName } : {}),
         });
       }
     });
@@ -188,19 +173,18 @@ export const SignInScreen: React.FC<SignInScreenProps> = ({ navigation }) => {
     setIsSubmitting(true);
 
     const gradeLabel = classGrade === 'XI' ? 'Class 11' : 'Class 12';
-    let studentName = fullName.trim() || storedUser.name || 'Whiz Student';
+    let studentName = fullName.trim();
     let studentEmail = email.trim().toLowerCase() || storedUser.email;
 
     try {
-      const session = await signInWithGoogle();
+      const existing = (await supabase.auth.getSession()).data.session;
+      const session = shouldReuseSupabaseSession(existing, Date.now() / 1000, 'choose_account')
+        ? existing
+        : await signInWithGoogle();
       if (!session?.user) {
         throw new Error('Google Sign-In did not create a session.');
       }
 
-      studentName =
-        session.user.user_metadata?.full_name ||
-        session.user.user_metadata?.name ||
-        studentName;
       studentEmail = session.user.email || studentEmail;
       setEmail(studentEmail);
       setFullName(studentName);
@@ -222,7 +206,11 @@ export const SignInScreen: React.FC<SignInScreenProps> = ({ navigation }) => {
       };
 
       await userService.updateUserProfile(profileData, session.user.id);
-      await progressService.loadProgress();
+      try {
+        await progressService.loadProgress();
+      } catch {
+        // Progress may already exist on Supabase even if the website API 401s.
+      }
       setUser(profileData);
 
       const store = useAppStore.getState();
@@ -280,8 +268,8 @@ export const SignInScreen: React.FC<SignInScreenProps> = ({ navigation }) => {
             style={styles.txtInput}
             value={fullName}
             onChangeText={setFullName}
-            placeholder="e.g. Rahul Sharma"
-            placeholderTextColor={colors.mutedDim}
+            placeholder="Student"
+            placeholderTextColor="rgba(232, 244, 237, 0.42)"
             autoCapitalize="words"
           />
         </View>
@@ -433,22 +421,25 @@ export const SignInScreen: React.FC<SignInScreenProps> = ({ navigation }) => {
             style={styles.txtInput}
             value={institution}
             onChangeText={setInstitution}
-            placeholder="e.g. Viswa Vignan"
-            placeholderTextColor={colors.mutedDim}
+            placeholder="Type your college / school name"
+            placeholderTextColor="rgba(232, 244, 237, 0.42)"
           />
 
           <TouchableOpacity
-            activeOpacity={0.8}
-            style={[styles.chkRow, level4Consent && styles.chkRowChecked]}
+            activeOpacity={0.85}
+            style={[styles.chkRow, level4Consent ? styles.chkRowChecked : styles.chkRowNeedsTick]}
             onPress={() => setLevel4Consent(!level4Consent)}
           >
-            <View style={[styles.chkBox, level4Consent && styles.chkBoxChecked]}>
-              {level4Consent && <Check size={12} color="#04140E" strokeWidth={3.5} />}
+            <View style={[styles.chkBox, level4Consent ? styles.chkBoxChecked : styles.chkBoxNeedsTick]}>
+              {level4Consent && <Check size={14} color="#04140E" strokeWidth={3.5} />}
             </View>
-            <Text style={styles.chkLabel}>
-              I understand I need approval & support from my Institution from{' '}
-              <Text style={{ color: colors.text, fontWeight: '700' }}>Level-4</Text> onwards.
-            </Text>
+            <View style={styles.chkCopy}>
+              <Text style={styles.chkRequired}>Required · tick this box</Text>
+              <Text style={[styles.chkLabel, !level4Consent && styles.chkLabelNeedsTick]}>
+                I understand I need approval & support from my Institution from{' '}
+                <Text style={{ color: colors.gold, fontWeight: '700' }}>Level-4</Text> onwards.
+              </Text>
+            </View>
           </TouchableOpacity>
         </View>
 
@@ -796,38 +787,62 @@ const styles = StyleSheet.create({
   chkRow: {
     flexDirection: 'row',
     alignItems: 'flex-start',
-    gap: 9,
-    marginTop: 10,
-    paddingVertical: 11,
-    paddingHorizontal: 12,
-    borderRadius: 9,
+    gap: 12,
+    marginTop: 14,
+    paddingVertical: 14,
+    paddingHorizontal: 14,
+    borderRadius: 12,
     backgroundColor: colors.card,
     borderWidth: 1.5,
     borderColor: colors.border,
+  },
+  chkRowNeedsTick: {
+    borderWidth: 2,
+    borderColor: colors.gold,
+    backgroundColor: 'rgba(245, 197, 66, 0.14)',
   },
   chkRowChecked: {
     borderColor: colors.teal,
     backgroundColor: colors.tealAlpha10,
   },
   chkBox: {
-    width: 16,
-    height: 16,
-    borderRadius: 4,
+    width: 22,
+    height: 22,
+    borderRadius: 6,
     borderWidth: 1.5,
     borderColor: colors.border,
     alignItems: 'center',
     justifyContent: 'center',
     marginTop: 1,
   },
+  chkBoxNeedsTick: {
+    borderWidth: 2.5,
+    borderColor: colors.gold,
+    backgroundColor: 'rgba(245, 197, 66, 0.22)',
+  },
   chkBoxChecked: {
     backgroundColor: colors.teal,
     borderColor: colors.teal,
   },
+  chkCopy: {
+    flex: 1,
+    gap: 4,
+  },
+  chkRequired: {
+    fontSize: 11,
+    fontWeight: typography.fontWeight.bold,
+    color: colors.gold,
+    letterSpacing: 0.4,
+    textTransform: 'uppercase',
+  },
   chkLabel: {
     flex: 1,
-    fontSize: 11,
+    fontSize: 12.5,
     color: colors.muted,
     lineHeight: 16,
+  },
+  chkLabelNeedsTick: {
+    color: colors.text,
   },
   locGrid: {
     flexDirection: 'row',

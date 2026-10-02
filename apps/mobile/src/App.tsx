@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { View, ActivityIndicator, StyleSheet } from 'react-native';
+import { View, ActivityIndicator, StyleSheet, AppState, type AppStateStatus } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { Session } from '@supabase/supabase-js';
@@ -81,6 +81,17 @@ export default function App() {
       clearTimeout(timer);
       subscription.unsubscribe();
     };
+  }, []);
+
+  useEffect(() => {
+    const onChange = (status: AppStateStatus) => {
+      if (status !== 'active') return;
+      const current = useAppStore.getState();
+      if (!current.user.id) return;
+      void progressService.loadProgress().catch(() => undefined);
+    };
+    const sub = AppState.addEventListener('change', onChange);
+    return () => sub.remove();
   }, []);
 
   if (!isReady) {

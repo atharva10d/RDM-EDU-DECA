@@ -19,13 +19,16 @@ import { ArrowLeft } from 'lucide-react-native';
 import { useAppStore } from '../../store/useAppStore';
 import { edudecaApi, EdudecaApiError } from '../../services/edudecaApi';
 import { progressService } from '../../services/progressService';
-import { applyServerProgress } from '../../services/studentLoop/applyServerProgress';
+import { applyServerProgress, mergeLoadedProgress } from '../../services/studentLoop/applyServerProgress';
 import {
   appendPendingResult,
   buildChallengeCompletePayload,
 } from '../../services/studentLoop/challengeCompletePayload';
 import { mapChallengeQuestion } from '../../services/studentLoop/mapChallengeQuestion';
 import { getGateErrorAction } from '../../utils/gateErrors';
+import { challengeLoadFailureMessage } from '../../services/studentLoop/challengeLoadFailure';
+import { loadChallengeQuestionsFromSupabase } from '../../services/studentLoop/challengeQuestionsLoad';
+import { lineupForHome } from '../../services/studentLoop/lineupPath';
 import {
   challengeMaxStrikes,
   challengeSessionDurationSec,
@@ -85,69 +88,78 @@ export const QuizScreen: React.FC<QuizScreenProps> = ({ navigation, route }) => 
   const timeEndedRef = useRef<boolean>(false);
   const lastEndReasonRef = useRef<'won' | 'strikes' | 'time' | 'quit' | null>(null);
 
+  const applyQuestions = (rawQuestions: Array<Parameters<typeof mapChallengeQuestion>[0]>) => {
+    const mapped: QuizQuestion[] = rawQuestions.map(mapChallengeQuestion).map((question) => ({
+      id: question.id,
+      discipline: question.subjectId,
+      tag: question.tag,
+      color: question.color,
+      q: question.q,
+      options: question.options,
+      correctIndex: question.correctIndex,
+    }));
+    setQuestions(mapped);
+    setCurrentIndex(0);
+    scoreRef.current = 0;
+    strikesRef.current = 0;
+    resultsRef.current = [];
+    strikeEndedRef.current = false;
+    timeEndedRef.current = false;
+    lastEndReasonRef.current = null;
+    setScore(0);
+    setStrikes(0);
+    setResults([]);
+    setPickedIndex(null);
+    setTimeLeft(limitTime);
+    startTimeRef.current = Date.now();
+  };
+
   const initChallenge = async () => {
     setIsLoadingQuestions(true);
     setLoadError(null);
     try {
+      let rawQuestions: Array<Parameters<typeof mapChallengeQuestion>[0]> = [];
       try {
-        await edudecaApi.getChallengeAvailability();
-      } catch (err: any) {
-        if (err instanceof EdudecaApiError && err.status === 401) {
-          setIsLoadingQuestions(false);
+        const res = await edudecaApi.getChallengeQuestions(
+          targetLevel,
+          lineupForHome({
+            pendingTrack: useAppStore.getState().pendingPathTrack,
+            selectedTrack: useAppStore.getState().selectedTrack,
+            disciplines: useAppStore.getState().disciplines,
+          }),
+        );
+        rawQuestions = res.questions ?? [];
+      } catch (err: unknown) {
+        const apiErr = err as EdudecaApiError;
+        const errCode =
+          apiErr instanceof EdudecaApiError
+            ? apiErr.code || apiErr.message
+            : '';
+        if (errCode) {
+          const action = getGateErrorAction(errCode);
+          if (action.title !== 'Challenge Locked') {
+            Alert.alert(action.title, action.message, [
+              { text: 'OK', onPress: () => navigation.navigate(action.navigate as never) },
+            ]);
+            setIsLoadingQuestions(false);
+            return;
+          }
+        }
+        rawQuestions = await loadChallengeQuestionsFromSupabase(targetLevel);
+        if (rawQuestions.length === 0) {
+          setLoadError(challengeLoadFailureMessage(apiErr));
           return;
         }
-        const errCode =
-          err instanceof EdudecaApiError
-            ? err.code || err.message
-            : err?.code || err?.reason || err?.message || '';
-        const action = getGateErrorAction(errCode);
-        Alert.alert(action.title, action.message, [{ text: 'OK', onPress: () => navigation.navigate(action.navigate as any) }]);
-        setIsLoadingQuestions(false);
-        return;
       }
 
-      const res = await edudecaApi.getChallengeQuestions(targetLevel);
-      if (res.questions && res.questions.length > 0) {
-        const mapped: QuizQuestion[] = res.questions.map(mapChallengeQuestion).map((question) => ({
-          id: question.id,
-          discipline: question.subjectId,
-          tag: question.tag,
-          color: question.color,
-          q: question.q,
-          options: question.options,
-          correctIndex: question.correctIndex,
-        }));
-        setQuestions(mapped);
-        setCurrentIndex(0);
-        scoreRef.current = 0;
-        strikesRef.current = 0;
-        resultsRef.current = [];
-        strikeEndedRef.current = false;
-        timeEndedRef.current = false;
-        lastEndReasonRef.current = null;
-        setScore(0);
-        setStrikes(0);
-        setResults([]);
-        setPickedIndex(null);
-        setTimeLeft(limitTime);
-        startTimeRef.current = Date.now();
+      if (rawQuestions.length > 0) {
+        applyQuestions(rawQuestions);
       } else {
         setLoadError('No questions available for this level. Please try again later.');
       }
-    } catch (err: any) {
-      if (err instanceof EdudecaApiError && err.status === 401) {
-        return;
-      }
-      const errCode =
-        err instanceof EdudecaApiError
-          ? err.code || err.message
-          : err?.code || err?.reason || err?.message || '';
-      const action = getGateErrorAction(errCode);
-      if (action.title !== 'Challenge Locked') {
-        Alert.alert(action.title, action.message, [{ text: 'OK', onPress: () => navigation.navigate(action.navigate as any) }]);
-      } else {
-        setLoadError(err?.message || 'Failed to load questions. Please check your connection.');
-      }
+    } catch (err: unknown) {
+      const apiErr = err as { status?: number; message?: string };
+      setLoadError(challengeLoadFailureMessage(apiErr));
     } finally {
       setIsLoadingQuestions(false);
     }
@@ -194,6 +206,8 @@ export const QuizScreen: React.FC<QuizScreenProps> = ({ navigation, route }) => 
     isSubmittingRef.current = true;
     clearInterval(timerRef.current);
     let completeSucceeded = false;
+    let scoreSnapshot = scoreRef.current;
+    let strikesSnapshot = strikesRef.current;
     try {
       let resultsSnapshot = resultsRef.current;
       if (pendingResult) {
@@ -216,8 +230,14 @@ export const QuizScreen: React.FC<QuizScreenProps> = ({ navigation, route }) => 
         resultsRef.current = resultsSnapshot;
         setResults(resultsSnapshot);
       }
-      const scoreSnapshot = scoreRef.current;
-      const strikesSnapshot = strikesRef.current;
+      scoreSnapshot = scoreRef.current;
+      strikesSnapshot = strikesRef.current;
+      void progressService.persistSeenFromResults({
+        level: targetLevel,
+        reason,
+        results: resultsSnapshot,
+      });
+      const localNext = await progressService.persistChallengeOutcome(reason, targetLevel);
       const response = await edudecaApi.completeChallenge(
         buildChallengeCompletePayload({
           reason,
@@ -230,8 +250,12 @@ export const QuizScreen: React.FC<QuizScreenProps> = ({ navigation, route }) => 
       );
       completeSucceeded = true;
       if (response?.progress) {
+        const applied = mergeLoadedProgress(
+          useAppStore.getState().campaignLevel,
+          applyServerProgress(response.progress),
+        );
         useAppStore.getState().setProgress({
-          ...applyServerProgress(response.progress),
+          ...applied,
           ...(typeof response.trials?.remaining === 'number'
             ? { trialsRemaining: response.trials.remaining }
             : {}),
@@ -241,19 +265,16 @@ export const QuizScreen: React.FC<QuizScreenProps> = ({ navigation, route }) => 
           trialsRemaining: response.trials.remaining,
         });
       }
-      void progressService.loadProgress().catch((loadErr) => {
-        console.warn('[QuizScreen] Failed to refresh progress after challenge complete:', loadErr);
-      });
+      const storeLevel = useAppStore.getState().campaignLevel;
       const accuracy = questions.length > 0 ? Math.round((scoreSnapshot / questions.length) * 100) : 0;
-      const nextLevel = response?.progress?.campaignLevel;
       const xpEarned = scoreSnapshot * 10;
       navigation.replace('Results', {
         score: scoreSnapshot,
         total: questions.length,
         earnedRdm: xpEarned,
         accuracy,
-        leveledUp: Boolean(nextLevel && nextLevel > targetLevel),
-        newLevel: nextLevel,
+        leveledUp: storeLevel > targetLevel || localNext.campaignLevel > targetLevel,
+        newLevel: Math.max(storeLevel, localNext.campaignLevel),
         reason,
         correct: scoreSnapshot,
         strikes: strikesSnapshot,
@@ -264,7 +285,22 @@ export const QuizScreen: React.FC<QuizScreenProps> = ({ navigation, route }) => 
       if (completeSucceeded) {
         return;
       }
-      isSubmittingRef.current = false;
+      const next = await progressService.persistChallengeOutcome(reason, targetLevel);
+      const accuracy = questions.length > 0 ? Math.round((scoreSnapshot / questions.length) * 100) : 0;
+      const xpEarned = scoreSnapshot * 10;
+      navigation.replace('Results', {
+        score: scoreSnapshot,
+        total: questions.length,
+        earnedRdm: xpEarned,
+        accuracy,
+        leveledUp: next.campaignLevel > targetLevel,
+        newLevel: next.campaignLevel,
+        reason,
+        correct: scoreSnapshot,
+        strikes: strikesSnapshot,
+        xpEarned,
+        campaignLevelAtStart: targetLevel,
+      });
       if (err instanceof EdudecaApiError && err.status === 401) {
         return;
       }
@@ -273,13 +309,10 @@ export const QuizScreen: React.FC<QuizScreenProps> = ({ navigation, route }) => 
           ? err.code || err.message
           : err?.code || err?.reason || err?.message || '';
       const action = getGateErrorAction(errCode);
-      if (action.title !== 'Challenge Locked') {
-        Alert.alert(action.title, action.message, [{ text: 'OK', onPress: () => navigation.navigate(action.navigate as any) }]);
-      } else {
-        Alert.alert('Submission Error', err?.message || 'Failed to submit challenge results.', [
-          { text: 'OK' },
-        ]);
+      if (action.title === 'Challenge Locked') {
+        return;
       }
+      Alert.alert(action.title, action.message, [{ text: 'OK' }]);
     }
   };
 
@@ -397,7 +430,23 @@ export const QuizScreen: React.FC<QuizScreenProps> = ({ navigation, route }) => 
     );
   }
 
-  if (questions.length === 0) return null;
+  if (questions.length === 0) {
+    return (
+      <SafeAreaView style={styles.safeArea}>
+        <View style={styles.loadingContainer}>
+          <Text style={{ color: colors.red, fontSize: 15, textAlign: 'center', marginBottom: 20 }}>
+            {challengeLoadFailureMessage({ message: 'No questions loaded' })}
+          </Text>
+          <TouchableOpacity style={{ backgroundColor: colors.teal, paddingHorizontal: 28, paddingVertical: 12, borderRadius: 10, marginBottom: 12 }} onPress={() => void initChallenge()}>
+            <Text style={{ color: '#000', fontWeight: 'bold' }}>Try Again</Text>
+          </TouchableOpacity>
+          <TouchableOpacity onPress={() => navigation.goBack()}>
+            <Text style={{ color: colors.muted, fontSize: 13 }}>Go Back</Text>
+          </TouchableOpacity>
+        </View>
+      </SafeAreaView>
+    );
+  }
 
   const currentQ = questions[currentIndex];
   const total = questions.length;
@@ -420,11 +469,11 @@ export const QuizScreen: React.FC<QuizScreenProps> = ({ navigation, route }) => 
           </TouchableOpacity>
           <View style={styles.progressWrap}>
             <View style={styles.progressLabelRow}>
-              <Text style={styles.progressPos}>Lv{targetLevel} · Q{currentIndex + 1}/{total} · Strikes: {strikes}/{limitStrikes} · {trialsRemaining} left</Text>
+              <Text style={styles.progressPos}>Q{currentIndex + 1}/{total} · Strikes: {strikes}/{limitStrikes}</Text>
               <Text style={styles.progressScore}>Score: {score}</Text>
             </View>
             <View style={styles.progressBarBg}>
-              <View style={[styles.progressBarFill, { width: `${progressPct}%` }]} />
+              <Text style={styles.progressPos}>Lv{targetLevel} · Q{currentIndex + 1}/{total} · Strikes: {strikes}/{limitStrikes} · {trialsRemaining} left</Text>
             </View>
           </View>
           <View style={[styles.timerRing, timeLeft <= 60 && styles.timerUrgent, timeLeft === 0 && styles.timerDead]}>
@@ -521,9 +570,9 @@ const styles = StyleSheet.create({
   optLetterTextIncorrect: { color: '#FFFFFF' },
   optText: { flex: 1, fontSize: 15.5, fontWeight: typography.fontWeight.medium },
   optTextNormal: { color: colors.text },
-  optTextCorrect: { color: colors.teal, fontWeight: typography.fontWeight.bold },
-  optTextIncorrect: { color: colors.red, fontWeight: typography.fontWeight.bold },
-  optTextDimmed: { color: colors.mutedDim },
+  optTextCorrect: { color: colors.teal },
+  optTextIncorrect: { color: colors.red },
+  optTextDimmed: { color: colors.muted },
   nextBtn: { marginTop: 6 },
 });
 

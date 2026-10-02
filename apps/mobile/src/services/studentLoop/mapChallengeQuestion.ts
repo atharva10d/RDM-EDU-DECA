@@ -1,5 +1,6 @@
 import type { ChallengeQuestion } from "../edudecaApi";
 import type { AccentColorKey, DisciplineTag } from "@edudeca/types";
+import { displayChallengeOptions } from "./displayChallengeOptions";
 
 const DISCIPLINE_MAP: Record<string, { tag: DisciplineTag; color: AccentColorKey }> = {
   phy: { tag: "PHYSICS", color: "teal" },
@@ -57,7 +58,7 @@ export function mapChallengeQuestion(
     tag: mapping.tag,
     color: mapping.color,
     q: String(q.stem || q.question || ""),
-    options: q.options,
+    options: displayChallengeOptions(String(q.stem || q.question || ""), q.options),
     correctIndex: q.correctIndex ?? q.correct_index ?? 0,
   };
 }

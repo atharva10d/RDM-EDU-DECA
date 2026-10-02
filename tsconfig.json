@@ -11,7 +11,6 @@
     "forceConsistentCasingInFileNames": true,
     "resolveJsonModule": true,
     "isolatedModules": true,
-    "baseUrl": ".",
     "paths": {
       "@edudeca/config/*": ["./packages/config/*"],
       "@edudeca/config/tsconfig.base.json": ["./packages/config/tsconfig.base.json"],

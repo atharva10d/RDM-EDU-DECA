@@ -40,7 +40,7 @@ export function level4ConsentFromProfile(
 }
 
 const DUMMY_PROFILE_LABELS = new Set(
-  ["viswa vignan", "all india", "whiz student"].map((s) => s),
+  ["viswa vignan", "all india", "whiz student", "student"].map((s) => s),
 );
 
 export function honestProfileText(value: string | null | undefined): string {
@@ -48,5 +48,11 @@ export function honestProfileText(value: string | null | undefined): string {
   if (!trimmed) return "—";
   if (DUMMY_PROFILE_LABELS.has(trimmed.toLowerCase())) return "—";
   return trimmed;
+}
+
+/** Empty until the student types a real value — dummy labels stay as placeholders. */
+export function typedProfileField(value: string | null | undefined): string {
+  const honest = honestProfileText(value);
+  return honest === "—" ? "" : honest;
 }
 

@@ -147,7 +147,16 @@ export const LevelPathScreen: React.FC<LevelPathScreenProps> = ({ navigation }) 
                 );
                 return;
               }
-              navigation?.navigate('Quiz', { level: campaignLevel });
+              const level = Math.max(1, campaignLevel || 1);
+              const parent = navigation?.getParent?.();
+              if (parent) {
+                parent.navigate('DashboardTab', {
+                  screen: 'Quiz',
+                  params: { level },
+                });
+                return;
+              }
+              navigation?.navigate('Quiz', { level });
             };
 
             return (

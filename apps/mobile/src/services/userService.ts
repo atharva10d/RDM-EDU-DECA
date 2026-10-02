@@ -27,9 +27,10 @@ export const userService = {
       .from('edudeca_profiles')
       .select('*')
       .eq('id', uid)
-      .single();
+      .maybeSingle();
 
     if (error) throw new Error(error.message);
+    if (!profile) throw new Error('Profile not found');
 
     // Also fetch progress from website API
     let progress: any = {};

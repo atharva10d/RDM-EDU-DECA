@@ -3,9 +3,15 @@ import { View, Text, StyleSheet, TouchableOpacity, ActivityIndicator, Alert } fr
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { colors } from '@edudeca/ui';
 import { progressService } from '../../services/progressService';
+import { useAppStore } from '../../store/useAppStore';
 
 export const PickDisciplinesScreen = () => {
-  const [selectedPath, setSelectedPath] = useState<'math' | 'bio' | null>(null);
+  const [selectedPath, setSelectedPath] = useState<'math' | 'bio' | null>(() => {
+    const pending = useAppStore.getState().pendingPathTrack;
+    if (pending === 'A') return 'math';
+    if (pending === 'B') return 'bio';
+    return null;
+  });
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const fixedDisciplines = [
@@ -31,6 +37,7 @@ export const PickDisciplinesScreen = () => {
       const allDisciplines = [...fixedDisciplines.map(d => d.id), ...pathDisciplines];
       
       await progressService.saveDisciplines(allDisciplines);
+      useAppStore.getState().setPendingPathTrack(null);
       // Navigation is handled automatically by RootNavigator when state.disciplines updates
     } catch (err: any) {
       setIsSubmitting(false);
@@ -63,7 +70,10 @@ export const PickDisciplinesScreen = () => {
         
         <TouchableOpacity 
           style={[styles.pathCard, selectedPath === 'math' && styles.pathCardSelected]} 
-          onPress={() => setSelectedPath('math')}
+          onPress={() => {
+            setSelectedPath('math');
+            useAppStore.getState().setPendingPathTrack('A');
+          }}
         >
           <View style={styles.pathHeader}>
             
@@ -74,7 +84,10 @@ export const PickDisciplinesScreen = () => {
 
         <TouchableOpacity 
           style={[styles.pathCard, selectedPath === 'bio' && styles.pathCardSelected]} 
-          onPress={() => setSelectedPath('bio')}
+          onPress={() => {
+            setSelectedPath('bio');
+            useAppStore.getState().setPendingPathTrack('B');
+          }}
         >
           <View style={styles.pathHeader}>
             

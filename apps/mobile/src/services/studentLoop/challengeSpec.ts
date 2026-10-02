@@ -18,3 +18,10 @@ export function challengeSessionDurationSec(campaignLevel: number): number {
   if (level === 2) return 10 * 60;
   return 20 * 60;
 }
+
+export function challengeGroupsPerDiscipline(campaignLevel: number): number {
+  const level = Math.max(1, Math.floor(campaignLevel) || 1);
+  if (level <= 1) return 1;
+  if (level === 2) return 2;
+  return 3;
+}
