@@ -1,4 +1,4 @@
-﻿import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   View,
   Text,
@@ -17,9 +17,22 @@ import { DashboardStackParamList } from '../../navigation/types';
 import { colors, typography, borderRadius, Button } from '@edudeca/ui';
 import { ArrowLeft } from 'lucide-react-native';
 import { useAppStore } from '../../store/useAppStore';
-import { edudecaApi } from '../../services/edudecaApi';
+import { edudecaApi, EdudecaApiError } from '../../services/edudecaApi';
 import { progressService } from '../../services/progressService';
+import { applyServerProgress, mergeLoadedProgress } from '../../services/studentLoop/applyServerProgress';
+import {
+  appendPendingResult,
+  buildChallengeCompletePayload,
+} from '../../services/studentLoop/challengeCompletePayload';
+import { mapChallengeQuestion } from '../../services/studentLoop/mapChallengeQuestion';
 import { getGateErrorAction } from '../../utils/gateErrors';
+import { challengeLoadFailureMessage } from '../../services/studentLoop/challengeLoadFailure';
+import { loadChallengeQuestionsFromSupabase } from '../../services/studentLoop/challengeQuestionsLoad';
+import { lineupForHome } from '../../services/studentLoop/lineupPath';
+import {
+  challengeMaxStrikes,
+  challengeSessionDurationSec,
+} from '../../services/studentLoop/challengeSpec';
 
 type QuizScreenNavigationProp = NativeStackNavigationProp<DashboardStackParamList, 'Quiz'>;
 type QuizScreenRouteProp = RouteProp<DashboardStackParamList, 'Quiz'>;
@@ -39,91 +52,114 @@ interface QuizQuestion {
   correctIndex: number;
 }
 
-const DISCIPLINE_MAP: Record<string, { tag: string; color: string }> = {
-  phy: { tag: 'PHYSICS', color: 'teal' },
-  che: { tag: 'CHEMISTRY', color: 'amber' },
-  mat: { tag: 'MATHS', color: 'purple' },
-  amat: { tag: 'APPLIED MATH', color: 'blue' },
-  bio: { tag: 'BIOLOGY', color: 'pink' },
-  biotech: { tag: 'BIOTECHNOLOGY', color: 'teal' },
-  ent: { tag: 'ENTREPRENEURSHIP', color: 'gold' },
-  eng: { tag: 'VERBAL', color: 'blue' },
-  eco: { tag: 'QUANTITATIVE', color: 'amber' },
-  log: { tag: 'ANALYTICAL', color: 'purple' },
-  gk: { tag: 'GK', color: 'teal' },
-  fin: { tag: 'FINLIT', color: 'gold' },
-};
+interface QuizResult {
+  questionId: string;
+  subjectId: string;
+  isCorrect: boolean;
+  skipped: boolean;
+}
 
 export const QuizScreen: React.FC<QuizScreenProps> = ({ navigation, route }) => {
   const targetLevel = route.params?.level || 1;
   const user = useAppStore((state) => state.user);
+  const trialsRemaining = useAppStore((state) => state.trialsRemaining);
 
   const [questions, setQuestions] = useState<QuizQuestion[]>([]);
   const [currentIndex, setCurrentIndex] = useState<number>(0);
   const [score, setScore] = useState<number>(0);
   const [strikes, setStrikes] = useState<number>(0);
-  const [results, setResults] = useState<any[]>([]);
+  const [results, setResults] = useState<QuizResult[]>([]);
 
-  const limitTime = targetLevel === 1 ? 5 * 60 : targetLevel === 2 ? 10 * 60 : 20 * 60;
-  const limitStrikes = targetLevel === 1 ? 5 : targetLevel === 2 ? 7 : 10;
+  const limitTime = challengeSessionDurationSec(targetLevel);
+  const limitStrikes = challengeMaxStrikes(targetLevel);
 
   const [timeLeft, setTimeLeft] = useState<number>(limitTime);
   const [pickedIndex, setPickedIndex] = useState<number | null>(null);
-  const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
   const [isLoadingQuestions, setIsLoadingQuestions] = useState<boolean>(true);
   const [loadError, setLoadError] = useState<string | null>(null);
 
   const timerRef = useRef<any>(null);
+  const isSubmittingRef = useRef<boolean>(false);
   const startTimeRef = useRef<number>(Date.now());
+  const scoreRef = useRef<number>(0);
+  const strikesRef = useRef<number>(0);
+  const resultsRef = useRef<QuizResult[]>([]);
+  const strikeEndedRef = useRef<boolean>(false);
+  const timeEndedRef = useRef<boolean>(false);
+  const lastEndReasonRef = useRef<'won' | 'strikes' | 'time' | 'quit' | null>(null);
+
+  const applyQuestions = (rawQuestions: Array<Parameters<typeof mapChallengeQuestion>[0]>) => {
+    const mapped: QuizQuestion[] = rawQuestions.map(mapChallengeQuestion).map((question) => ({
+      id: question.id,
+      discipline: question.subjectId,
+      tag: question.tag,
+      color: question.color,
+      q: question.q,
+      options: question.options,
+      correctIndex: question.correctIndex,
+    }));
+    setQuestions(mapped);
+    setCurrentIndex(0);
+    scoreRef.current = 0;
+    strikesRef.current = 0;
+    resultsRef.current = [];
+    strikeEndedRef.current = false;
+    timeEndedRef.current = false;
+    lastEndReasonRef.current = null;
+    setScore(0);
+    setStrikes(0);
+    setResults([]);
+    setPickedIndex(null);
+    setTimeLeft(limitTime);
+    startTimeRef.current = Date.now();
+  };
 
   const initChallenge = async () => {
     setIsLoadingQuestions(true);
     setLoadError(null);
     try {
+      let rawQuestions: Array<Parameters<typeof mapChallengeQuestion>[0]> = [];
       try {
-        await edudecaApi.getChallengeAvailability();
-      } catch (err: any) {
-        const errCode = err?.code || err?.reason || err?.message || '';
-        const action = getGateErrorAction(errCode);
-        Alert.alert(action.title, action.message, [{ text: 'OK', onPress: () => navigation.navigate(action.navigate as any) }]);
-        setIsLoadingQuestions(false);
-        return;
+        const res = await edudecaApi.getChallengeQuestions(
+          targetLevel,
+          lineupForHome({
+            pendingTrack: useAppStore.getState().pendingPathTrack,
+            selectedTrack: useAppStore.getState().selectedTrack,
+            disciplines: useAppStore.getState().disciplines,
+          }),
+        );
+        rawQuestions = res.questions ?? [];
+      } catch (err: unknown) {
+        const apiErr = err as EdudecaApiError;
+        const errCode =
+          apiErr instanceof EdudecaApiError
+            ? apiErr.code || apiErr.message
+            : '';
+        if (errCode) {
+          const action = getGateErrorAction(errCode);
+          if (action.title !== 'Challenge Locked') {
+            Alert.alert(action.title, action.message, [
+              { text: 'OK', onPress: () => navigation.navigate(action.navigate as never) },
+            ]);
+            setIsLoadingQuestions(false);
+            return;
+          }
+        }
+        rawQuestions = await loadChallengeQuestionsFromSupabase(targetLevel);
+        if (rawQuestions.length === 0) {
+          setLoadError(challengeLoadFailureMessage(apiErr));
+          return;
+        }
       }
 
-      const res = await edudecaApi.getChallengeQuestions(targetLevel);
-      if (res.questions && res.questions.length > 0) {
-        const mapped: QuizQuestion[] = res.questions.map((q: any) => {
-          const discKey = (q.discipline || '').toLowerCase();
-          const mapping = DISCIPLINE_MAP[discKey] || { tag: q.discipline || 'UNKNOWN', color: 'teal' };
-          return {
-            id: q.id,
-            discipline: q.discipline || '',
-            tag: mapping.tag,
-            color: mapping.color,
-            q: q.question || q.q || q.title || q.text || q.content || JSON.stringify(q),
-            options: q.options || q.o || [],
-            correctIndex: q.correct_index ?? q.correctIndex ?? 0,
-          };
-        });
-        setQuestions(mapped);
-        setCurrentIndex(0);
-        setScore(0);
-        setStrikes(0);
-        setResults([]);
-        setPickedIndex(null);
-        setTimeLeft(limitTime);
-        startTimeRef.current = Date.now();
+      if (rawQuestions.length > 0) {
+        applyQuestions(rawQuestions);
       } else {
         setLoadError('No questions available for this level. Please try again later.');
       }
-    } catch (err: any) {
-      const errCode = err?.code || err?.reason || err?.message || '';
-      const action = getGateErrorAction(errCode);
-      if (action.title !== 'Challenge Locked') {
-        Alert.alert(action.title, action.message, [{ text: 'OK', onPress: () => navigation.navigate(action.navigate as any) }]);
-      } else {
-        setLoadError(err?.message || 'Failed to load questions. Please check your connection.');
-      }
+    } catch (err: unknown) {
+      const apiErr = err as { status?: number; message?: string };
+      setLoadError(challengeLoadFailureMessage(apiErr));
     } finally {
       setIsLoadingQuestions(false);
     }
@@ -134,11 +170,24 @@ export const QuizScreen: React.FC<QuizScreenProps> = ({ navigation, route }) => 
   }, [targetLevel]);
 
   useEffect(() => {
+    scoreRef.current = score;
+  }, [score]);
+
+  useEffect(() => {
+    strikesRef.current = strikes;
+  }, [strikes]);
+
+  useEffect(() => {
+    resultsRef.current = results;
+  }, [results]);
+
+  useEffect(() => {
     if (isLoadingQuestions || questions.length === 0) return;
     timerRef.current = setInterval(() => {
       setTimeLeft((prev) => {
         if (prev <= 1) {
           clearInterval(timerRef.current);
+          timeEndedRef.current = true;
           handleEndChallenge('time');
           return 0;
         }
@@ -148,95 +197,202 @@ export const QuizScreen: React.FC<QuizScreenProps> = ({ navigation, route }) => 
     return () => clearInterval(timerRef.current);
   }, [isLoadingQuestions, questions]);
 
-  const handleEndChallenge = async (reason: 'won' | 'strikes' | 'time' | 'quit') => {
+  const handleEndChallenge = async (
+    reason: 'won' | 'strikes' | 'time' | 'quit',
+    pendingResult?: QuizResult,
+  ) => {
+    if (isSubmittingRef.current) return;
+    lastEndReasonRef.current = reason;
+    isSubmittingRef.current = true;
     clearInterval(timerRef.current);
-    if (isSubmitting) return;
-    setIsSubmitting(true);
+    let completeSucceeded = false;
+    let scoreSnapshot = scoreRef.current;
+    let strikesSnapshot = strikesRef.current;
     try {
-      const timeTaken = Math.round((Date.now() - startTimeRef.current) / 1000);
-      const response = await edudecaApi.completeChallenge({
+      let resultsSnapshot = resultsRef.current;
+      if (pendingResult) {
+        resultsSnapshot = appendPendingResult(resultsSnapshot, pendingResult);
+      }
+      if (reason === 'time') {
+        const unansweredQuestion = questions.find(
+          (question) => !resultsSnapshot.some((result) => result.questionId === question.id),
+        );
+        if (unansweredQuestion) {
+          resultsSnapshot = appendPendingResult(resultsSnapshot, {
+            questionId: unansweredQuestion.id,
+            subjectId: unansweredQuestion.discipline,
+            isCorrect: false,
+            skipped: true,
+          });
+        }
+      }
+      if (resultsSnapshot !== resultsRef.current) {
+        resultsRef.current = resultsSnapshot;
+        setResults(resultsSnapshot);
+      }
+      scoreSnapshot = scoreRef.current;
+      strikesSnapshot = strikesRef.current;
+      void progressService.persistSeenFromResults({
         level: targetLevel,
-        score,
-        total: questions.length,
-        timeTaken,
-        // Extended spec fields (backend accepts via [key: string]: any)
         reason,
-        correct: score,
-        campaignLevelAtStart: targetLevel,
-        strikes,
-        results,
+        results: resultsSnapshot,
       });
-      await progressService.loadProgress();
-      const accuracy = questions.length > 0 ? Math.round((score / questions.length) * 100) : 0;
+      const localNext = await progressService.persistChallengeOutcome(reason, targetLevel);
+      const response = await edudecaApi.completeChallenge(
+        buildChallengeCompletePayload({
+          reason,
+          correct: scoreSnapshot,
+          total: questions.length,
+          campaignLevelAtStart: targetLevel,
+          strikes: strikesSnapshot,
+          results: resultsSnapshot,
+        }),
+      );
+      completeSucceeded = true;
+      if (response?.progress) {
+        const applied = mergeLoadedProgress(
+          useAppStore.getState().campaignLevel,
+          applyServerProgress(response.progress),
+        );
+        useAppStore.getState().setProgress({
+          ...applied,
+          ...(typeof response.trials?.remaining === 'number'
+            ? { trialsRemaining: response.trials.remaining }
+            : {}),
+        });
+      } else if (typeof response?.trials?.remaining === 'number') {
+        useAppStore.getState().setProgress({
+          trialsRemaining: response.trials.remaining,
+        });
+      }
+      const storeLevel = useAppStore.getState().campaignLevel;
+      const accuracy = questions.length > 0 ? Math.round((scoreSnapshot / questions.length) * 100) : 0;
+      const xpEarned = scoreSnapshot * 10;
       navigation.replace('Results', {
-        score,
+        score: scoreSnapshot,
         total: questions.length,
-        earnedRdm: response?.xp_earned ?? score * 10,
+        earnedRdm: xpEarned,
         accuracy,
-        leveledUp: response?.leveled_up ?? false,
-        newLevel: response?.new_level,
+        leveledUp: storeLevel > targetLevel || localNext.campaignLevel > targetLevel,
+        newLevel: Math.max(storeLevel, localNext.campaignLevel),
         reason,
-        correct: score,
-        strikes,
-        xpEarned: response?.xp_earned ?? score * 10,
+        correct: scoreSnapshot,
+        strikes: strikesSnapshot,
+        xpEarned,
         campaignLevelAtStart: targetLevel,
       });
     } catch (err: any) {
-      const errCode = err?.code || err?.reason || err?.message || '';
-      const action = getGateErrorAction(errCode);
-      if (action.title !== 'Challenge Locked') {
-        Alert.alert(action.title, action.message, [{ text: 'OK', onPress: () => navigation.navigate(action.navigate as any) }]);
-      } else {
-        Alert.alert('Submission Error', err?.message || 'Failed to submit challenge results.');
+      if (completeSucceeded) {
+        return;
       }
-    } finally {
-      setIsSubmitting(false);
+      const next = await progressService.persistChallengeOutcome(reason, targetLevel);
+      const accuracy = questions.length > 0 ? Math.round((scoreSnapshot / questions.length) * 100) : 0;
+      const xpEarned = scoreSnapshot * 10;
+      navigation.replace('Results', {
+        score: scoreSnapshot,
+        total: questions.length,
+        earnedRdm: xpEarned,
+        accuracy,
+        leveledUp: next.campaignLevel > targetLevel,
+        newLevel: next.campaignLevel,
+        reason,
+        correct: scoreSnapshot,
+        strikes: strikesSnapshot,
+        xpEarned,
+        campaignLevelAtStart: targetLevel,
+      });
+      if (err instanceof EdudecaApiError && err.status === 401) {
+        return;
+      }
+      const errCode =
+        err instanceof EdudecaApiError
+          ? err.code || err.message
+          : err?.code || err?.reason || err?.message || '';
+      const action = getGateErrorAction(errCode);
+      if (action.title === 'Challenge Locked') {
+        return;
+      }
+      Alert.alert(action.title, action.message, [{ text: 'OK' }]);
     }
   };
 
   const handlePickOption = (index: number) => {
+    if (isSubmittingRef.current || strikeEndedRef.current || timeEndedRef.current) return;
     if (pickedIndex !== null) return;
     setPickedIndex(index);
     const currentQ = questions[currentIndex];
     if (index === currentQ.correctIndex) {
-      setScore((s) => s + 1);
+      const nextScore = scoreRef.current + 1;
+      scoreRef.current = nextScore;
+      setScore(nextScore);
     } else {
-      setStrikes((s) => {
-        const newStrikes = s + 1;
-        if (newStrikes >= limitStrikes) {
-          setTimeout(() => handleEndChallenge('strikes'), 800);
-        }
-        return newStrikes;
-      });
+      const nextStrikes = strikesRef.current + 1;
+      strikesRef.current = nextStrikes;
+      setStrikes(nextStrikes);
+      if (nextStrikes >= limitStrikes) {
+        strikeEndedRef.current = true;
+        setTimeout(() => handleEndChallenge('strikes'), 800);
+      }
     }
-    setResults((prev) => [
-      ...prev,
-      { questionId: currentQ.id, subjectId: currentQ.discipline, isCorrect: index === currentQ.correctIndex, skipped: false },
-    ]);
+    const nextResults = appendPendingResult(resultsRef.current, {
+      questionId: currentQ.id,
+      subjectId: currentQ.discipline,
+      isCorrect: index === currentQ.correctIndex,
+      skipped: false,
+    });
+    resultsRef.current = nextResults;
+    setResults(nextResults);
   };
 
   const handleNext = () => {
+    if (isSubmittingRef.current) return;
+    if (strikeEndedRef.current || timeEndedRef.current) {
+      const retryReason = lastEndReasonRef.current;
+      if (retryReason !== null) {
+        handleEndChallenge(retryReason);
+      }
+      return;
+    }
     const currentQ = questions[currentIndex];
+    const isLastQuestion = currentIndex >= questions.length - 1;
+    const currentAlreadyRecorded = resultsRef.current.some(
+      (result) => result.questionId === currentQ.id,
+    );
+    if (
+      isLastQuestion &&
+      currentAlreadyRecorded &&
+      lastEndReasonRef.current !== null &&
+      lastEndReasonRef.current === 'won'
+    ) {
+      handleEndChallenge(lastEndReasonRef.current);
+      return;
+    }
     const isSkipped = pickedIndex === null;
+    let skippedResult: QuizResult | undefined;
     if (isSkipped) {
-      setResults((prev) => [
-        ...prev,
-        { questionId: currentQ.id, subjectId: currentQ.discipline, isCorrect: false, skipped: true },
-      ]);
-      setStrikes((s) => {
-        const newStrikes = s + 1;
-        if (newStrikes >= limitStrikes) {
-          setTimeout(() => handleEndChallenge('strikes'), 300);
-          return newStrikes;
-        }
-        return newStrikes;
-      });
+      skippedResult = {
+        questionId: currentQ.id,
+        subjectId: currentQ.discipline,
+        isCorrect: false,
+        skipped: true,
+      };
+      const nextResults = appendPendingResult(resultsRef.current, skippedResult);
+      resultsRef.current = nextResults;
+      setResults(nextResults);
+      const nextStrikes = strikesRef.current + 1;
+      strikesRef.current = nextStrikes;
+      setStrikes(nextStrikes);
+      if (nextStrikes >= limitStrikes) {
+        strikeEndedRef.current = true;
+        handleEndChallenge('strikes', skippedResult);
+        return;
+      }
     }
     if (currentIndex < questions.length - 1) {
       setCurrentIndex((i) => i + 1);
       setPickedIndex(null);
     } else {
-      handleEndChallenge('won');
+      handleEndChallenge('won', skippedResult);
     }
   };
 
@@ -274,7 +430,23 @@ export const QuizScreen: React.FC<QuizScreenProps> = ({ navigation, route }) => 
     );
   }
 
-  if (questions.length === 0) return null;
+  if (questions.length === 0) {
+    return (
+      <SafeAreaView style={styles.safeArea}>
+        <View style={styles.loadingContainer}>
+          <Text style={{ color: colors.red, fontSize: 15, textAlign: 'center', marginBottom: 20 }}>
+            {challengeLoadFailureMessage({ message: 'No questions loaded' })}
+          </Text>
+          <TouchableOpacity style={{ backgroundColor: colors.teal, paddingHorizontal: 28, paddingVertical: 12, borderRadius: 10, marginBottom: 12 }} onPress={() => void initChallenge()}>
+            <Text style={{ color: '#000', fontWeight: 'bold' }}>Try Again</Text>
+          </TouchableOpacity>
+          <TouchableOpacity onPress={() => navigation.goBack()}>
+            <Text style={{ color: colors.muted, fontSize: 13 }}>Go Back</Text>
+          </TouchableOpacity>
+        </View>
+      </SafeAreaView>
+    );
+  }
 
   const currentQ = questions[currentIndex];
   const total = questions.length;
@@ -301,7 +473,7 @@ export const QuizScreen: React.FC<QuizScreenProps> = ({ navigation, route }) => 
               <Text style={styles.progressScore}>Score: {score}</Text>
             </View>
             <View style={styles.progressBarBg}>
-              <View style={[styles.progressBarFill, { width: `${progressPct}%` }]} />
+              <Text style={styles.progressPos}>Lv{targetLevel} · Q{currentIndex + 1}/{total} · Strikes: {strikes}/{limitStrikes} · {trialsRemaining} left</Text>
             </View>
           </View>
           <View style={[styles.timerRing, timeLeft <= 60 && styles.timerUrgent, timeLeft === 0 && styles.timerDead]}>
@@ -366,41 +538,41 @@ const styles = StyleSheet.create({
   backBtn: { width: 36, height: 36, borderRadius: 18, backgroundColor: colors.card, borderWidth: 1, borderColor: colors.border, alignItems: 'center', justifyContent: 'center' },
   progressWrap: { flex: 1 },
   progressLabelRow: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 6 },
-  progressPos: { fontSize: 11, color: colors.muted, fontWeight: typography.fontWeight.bold },
-  progressScore: { fontSize: 11, color: colors.teal, fontWeight: typography.fontWeight.extrabold },
+  progressPos: { fontSize: 13, color: colors.muted, fontWeight: typography.fontWeight.bold },
+  progressScore: { fontSize: 13, color: colors.teal, fontWeight: typography.fontWeight.extrabold },
   progressBarBg: { height: 6, backgroundColor: colors.border, borderRadius: 3, overflow: 'hidden' },
   progressBarFill: { height: '100%', backgroundColor: colors.teal, borderRadius: 3 },
-  timerRing: { paddingHorizontal: 10, height: 38, borderRadius: 19, backgroundColor: colors.card, borderWidth: 2, borderColor: colors.teal, alignItems: 'center', justifyContent: 'center' },
+  timerRing: { paddingHorizontal: 12, height: 42, borderRadius: 21, backgroundColor: colors.card, borderWidth: 2, borderColor: colors.teal, alignItems: 'center', justifyContent: 'center' },
   timerUrgent: { borderColor: colors.amber },
   timerDead: { borderColor: colors.red },
-  timerText: { fontSize: 12, fontWeight: typography.fontWeight.extrabold, color: colors.teal },
+  timerText: { fontSize: 14, fontWeight: typography.fontWeight.extrabold, color: colors.teal },
   timerTextUrgent: { color: colors.amber },
   timerTextDead: { color: colors.red },
   tagWrap: { alignItems: 'flex-start', marginBottom: 12 },
-  tagBadge: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingVertical: 4, paddingHorizontal: 10, borderRadius: borderRadius.round, borderWidth: 1, backgroundColor: colors.card },
+  tagBadge: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingVertical: 5, paddingHorizontal: 12, borderRadius: borderRadius.round, borderWidth: 1, backgroundColor: colors.card },
   tagDot: { width: 6, height: 6, borderRadius: 3 },
-  tagLabel: { fontSize: 11, fontWeight: typography.fontWeight.bold, textTransform: 'uppercase' },
-  questionCard: { backgroundColor: colors.card, borderRadius: borderRadius.lg, borderWidth: 1, borderColor: colors.border, padding: 18, marginBottom: 18, minHeight: 90, justifyContent: 'center' },
-  questionText: { fontSize: 15.5, fontWeight: typography.fontWeight.bold, color: colors.text, lineHeight: 22 },
+  tagLabel: { fontSize: 12.5, fontWeight: typography.fontWeight.bold, textTransform: 'uppercase' },
+  questionCard: { backgroundColor: colors.card, borderRadius: borderRadius.lg, borderWidth: 1, borderColor: colors.border, padding: 20, marginBottom: 18, minHeight: 100, justifyContent: 'center' },
+  questionText: { fontSize: 17.5, fontWeight: typography.fontWeight.bold, color: colors.text, lineHeight: 25 },
   optionsWrap: { gap: 10, marginBottom: 20 },
-  optBtn: { flexDirection: 'row', alignItems: 'center', padding: 12, borderRadius: borderRadius.md, borderWidth: 1.5, gap: 12 },
+  optBtn: { flexDirection: 'row', alignItems: 'center', padding: 14, minHeight: 54, borderRadius: borderRadius.md, borderWidth: 1.5, gap: 12 },
   optNormal: { backgroundColor: colors.card, borderColor: colors.border },
   optCorrect: { backgroundColor: colors.tealAlpha10, borderColor: colors.teal },
   optIncorrect: { backgroundColor: 'rgba(239, 68, 68, 0.1)', borderColor: colors.red },
   optDimmed: { backgroundColor: colors.card, borderColor: colors.border, opacity: 0.5 },
-  optLetter: { width: 26, height: 26, borderRadius: 13, alignItems: 'center', justifyContent: 'center' },
+  optLetter: { width: 32, height: 32, borderRadius: 16, alignItems: 'center', justifyContent: 'center' },
   optLetterNormal: { backgroundColor: colors.card2 },
   optLetterCorrect: { backgroundColor: colors.teal },
   optLetterIncorrect: { backgroundColor: colors.red },
-  optLetterText: { fontSize: 11, fontWeight: typography.fontWeight.extrabold },
+  optLetterText: { fontSize: 13, fontWeight: typography.fontWeight.extrabold },
   optLetterTextNormal: { color: colors.text },
   optLetterTextCorrect: { color: '#04140E' },
   optLetterTextIncorrect: { color: '#FFFFFF' },
-  optText: { flex: 1, fontSize: 13.5, fontWeight: typography.fontWeight.medium },
+  optText: { flex: 1, fontSize: 15.5, fontWeight: typography.fontWeight.medium },
   optTextNormal: { color: colors.text },
-  optTextCorrect: { color: colors.teal, fontWeight: typography.fontWeight.bold },
-  optTextIncorrect: { color: colors.red, fontWeight: typography.fontWeight.bold },
-  optTextDimmed: { color: colors.mutedDim },
+  optTextCorrect: { color: colors.teal },
+  optTextIncorrect: { color: colors.red },
+  optTextDimmed: { color: colors.muted },
   nextBtn: { marginTop: 6 },
 });
 

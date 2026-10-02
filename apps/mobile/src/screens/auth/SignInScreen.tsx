@@ -1,4 +1,4 @@
-﻿import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import {
   View,
   Text,
@@ -21,22 +21,11 @@ import { useAppStore } from '../../store/useAppStore';
 import { ChevronDown, Check, AlertTriangle, Search, X, Lock } from 'lucide-react-native';
 import Svg, { Path } from 'react-native-svg';
 import { supabase } from '../../lib/supabase';
+import { signInWithGoogle } from '../../lib/googleAuth';
 import { progressService } from '../../services/progressService';
-// Safely load GoogleSignin in environments where the native binary is present
-let GoogleSignin: any = null;
-try {
-  // eslint-disable-next-line @typescript-eslint/no-var-requires
-  const gModule = require('@react-native-google-signin/google-signin');
-  GoogleSignin = gModule.GoogleSignin;
-  if (GoogleSignin?.configure) {
-    GoogleSignin.configure({
-      webClientId: '167530443868-kniil90rorooo9i3vu80sqmtlo3sqqi2.apps.googleusercontent.com',
-      offlineAccess: false,
-    });
-  }
-} catch (_err) {
-  // Handled gracefully in standard Expo Go
-}
+import { userService } from '../../services/userService';
+import { shouldReuseSupabaseSession } from '../../services/studentLoop/reuseSupabaseSession';
+import { typedProfileField } from '../../services/studentLoop/profileColumns';
 
 type SignInScreenNavigationProp = NativeStackNavigationProp<AuthStackParamList, 'SignIn'>;
 
@@ -47,15 +36,9 @@ interface SignInScreenProps {
 export const SignInScreen: React.FC<SignInScreenProps> = ({ navigation }) => {
   const storedUser = useAppStore((state) => state.user);
   const setUser = useAppStore((state) => state.setUser);
-  const resetState = useAppStore((state) => state.resetState);
-  const loginDevOrGuest = useAppStore((state) => state.loginDevOrGuest);
   const selectedTrack = useAppStore((state) => state.selectedTrack);
-  const setUserProfile = useAppStore((state) => state.setUserProfile);
 
-  // Form State: Pre-populate with stored details if returning
-  const [fullName, setFullName] = useState<string>(
-    storedUser.name && storedUser.name !== 'Whiz Student' ? storedUser.name : ''
-  );
+  const [fullName, setFullName] = useState<string>(typedProfileField(storedUser.name));
   const [email, setEmail] = useState<string>(
     storedUser.email && storedUser.email !== 'student@edudeca.in' ? storedUser.email : ''
   );
@@ -65,12 +48,8 @@ export const SignInScreen: React.FC<SignInScreenProps> = ({ navigation }) => {
   const [isScienceStream, setIsScienceStream] = useState<boolean>(
     storedUser.scienceStream ?? true
   );
-  const [institution, setInstitution] = useState<string>(
-    storedUser.institution || 'Viswa Vignan'
-  );
-  const [level4Consent, setLevel4Consent] = useState<boolean>(
-    storedUser.level4Consent ?? false
-  );
+  const [institution, setInstitution] = useState<string>(typedProfileField(storedUser.institution));
+  const [level4Consent, setLevel4Consent] = useState<boolean>(false);
   const [selectedState, setSelectedState] = useState<string>(storedUser.state || '');
   const [selectedCity, setSelectedCity] = useState<string>(storedUser.city || '');
   const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
@@ -131,14 +110,9 @@ export const SignInScreen: React.FC<SignInScreenProps> = ({ navigation }) => {
         if (s.user.email) {
           setEmail(s.user.email);
         }
-        const gName = s.user.user_metadata?.full_name || s.user.user_metadata?.name;
-        if (gName && (!fullName || fullName === 'Whiz Student')) {
-          setFullName(gName);
-        }
         setUser({
           id: s.user.id,
           ...(s.user.email ? { email: s.user.email } : {}),
-          ...(gName ? { name: gName } : {}),
         });
       }
     });
@@ -151,14 +125,9 @@ export const SignInScreen: React.FC<SignInScreenProps> = ({ navigation }) => {
         if (s.user.email) {
           setEmail(s.user.email);
         }
-        const gName = s.user.user_metadata?.full_name || s.user.user_metadata?.name;
-        if (gName && (!fullName || fullName === 'Whiz Student')) {
-          setFullName(gName);
-        }
         setUser({
           id: s.user.id,
           ...(s.user.email ? { email: s.user.email } : {}),
-          ...(gName ? { name: gName } : {}),
         });
       }
     });
@@ -204,88 +173,22 @@ export const SignInScreen: React.FC<SignInScreenProps> = ({ navigation }) => {
     setIsSubmitting(true);
 
     const gradeLabel = classGrade === 'XI' ? 'Class 11' : 'Class 12';
-    const classLevel = classGrade === 'XI' ? 11 : 12; // Integer for Supabase
-    let studentName = fullName.trim() || storedUser.name || 'Whiz Student';
+    let studentName = fullName.trim();
     let studentEmail = email.trim().toLowerCase() || storedUser.email;
-    let session = null;
 
     try {
-      // 1. Native Google popup appears (no browser / no website)
-      await GoogleSignin.hasPlayServices({ showPlayServicesUpdateDialog: true });
-      const response: any = await GoogleSignin.signIn();
-
-      // Extract the dynamic idToken
-      const idToken = response.data?.idToken || response.idToken;
-      if (!idToken) throw new Error('No ID token returned from Google');
-
-      // 2. Token is sent directly to Supabase
-      const { data, error } = await supabase.auth.signInWithIdToken({
-        provider: 'google',
-        token: idToken,
-      });
-
-      if (error) throw error;
-      session = data.session;
-      console.log('Login successful! Supabase session:', data.session);
-
-        await progressService.loadProgress();
-        const store = useAppStore.getState();
-        if (!store.disciplines || store.disciplines.length < 10) {
-          navigation.navigate('PickDisciplines' as never);
-        }
-    } catch (err: any) {
-      console.error('Google Sign-In failed:', err);
-      setIsSubmitting(false);
-
-      if (err?.code === 'SIGN_IN_CANCELLED' || err?.code === '12501') {
-        return;
+      const existing = (await supabase.auth.getSession()).data.session;
+      const session = shouldReuseSupabaseSession(existing, Date.now() / 1000, 'choose_account')
+        ? existing
+        : await signInWithGoogle();
+      if (!session?.user) {
+        throw new Error('Google Sign-In did not create a session.');
       }
 
-      Alert.alert(
-        'Google Sign-In',
-        err?.message?.includes('null')
-          ? 'True Native Sign-In requires an Android Development Build or APK to display the native account selector sheet without opening a browser.'
-          : err?.message || 'Native Google Sign-In failed.'
-      );
-      return;
-    }
+      studentEmail = session.user.email || studentEmail;
+      setEmail(studentEmail);
+      setFullName(studentName);
 
-    try {
-      // Refresh or check session
-      if (!session) {
-        const { data: sessionData } = await supabase.auth.getSession();
-        session = sessionData.session;
-      }
-
-      if (session?.user) {
-        studentName = session.user.user_metadata?.full_name || session.user.user_metadata?.name || studentName;
-        studentEmail = session.user.email || studentEmail;
-        setEmail(studentEmail);
-        setFullName(studentName);
-
-        // Upsert to edudeca_profiles with class_level as integer
-        const { error: upsertError } = await supabase
-          .from('edudeca_profiles')
-          .upsert(
-            {
-              id: session.user.id,
-              full_name: studentName,
-              email: studentEmail,
-              class_level: classLevel,
-              institution: institution.trim(),
-              state: selectedState,
-              city: selectedCity,
-            },
-            { onConflict: 'id' }
-          );
-
-        if (upsertError) {
-          console.log('[Supabase] Profile upsert notice:', upsertError.message);
-        }
-      }
-    } catch (err: any) {
-      console.log('[Supabase Sync Notice]:', err?.message || err);
-    } finally {
       const profileData = {
         name: studentName,
         email: studentEmail,
@@ -302,10 +205,28 @@ export const SignInScreen: React.FC<SignInScreenProps> = ({ navigation }) => {
         quizzesCompleted: storedUser.quizzesCompleted || 0,
       };
 
-      // 1. Immediately authenticate and save to local Zustand store
+      await userService.updateUserProfile(profileData, session.user.id);
+      try {
+        await progressService.loadProgress();
+      } catch {
+        // Progress may already exist on Supabase even if the website API 401s.
+      }
       setUser(profileData);
-      loginDevOrGuest(profileData);
 
+      const store = useAppStore.getState();
+      if (!store.disciplines || store.disciplines.length < 10) {
+        navigation.navigate('PickDisciplines' as never);
+      }
+    } catch (err: any) {
+      console.error('Google Sign-In failed:', err);
+      setIsSubmitting(false);
+
+      if (err?.code === 'SIGN_IN_CANCELLED' || err?.code === '12501') {
+        return;
+      }
+
+      Alert.alert('Google Sign-In', err?.message || 'Google Sign-In failed.');
+    } finally {
       setIsSubmitting(false);
     }
   };
@@ -328,38 +249,17 @@ export const SignInScreen: React.FC<SignInScreenProps> = ({ navigation }) => {
 
         {/* Final Step Badge & Header */}
         <View style={styles.finalBadge}>
-          <Text style={styles.finalBadgeText}>ðŸ FINAL STEP Â· SIGN IN</Text>
+          <Text style={styles.finalBadgeText}>🏁 FINAL STEP · SIGN IN</Text>
         </View>
 
         <Text style={styles.whizLine}>
-          ðŸ† Continue your journey to become a chosen Whiz360
+          🏆 Continue your journey to become a chosen Whiz360
         </Text>
 
-        <Text style={styles.signInH1}>Start Today â€¦</Text>
+        <Text style={styles.signInH1}>Start Today…</Text>
         <Text style={styles.signInSub}>
           Enter your details and continue with Google to join EduDeca.
         </Text>
-
-        {/* 1-Tap Direct Login for Returning Users */}
-        {storedUser.institution ? (
-          <TouchableOpacity
-            activeOpacity={0.85}
-            style={styles.returningCard}
-            onPress={() => {
-              loginDevOrGuest(storedUser);
-            }}
-          >
-            <View style={styles.returningLeft}>
-              <Text style={styles.returningTitle}>ðŸ‘‹ Welcome Back, {storedUser.name || 'Champion'}!</Text>
-              <Text style={styles.returningSub} numberOfLines={1}>
-                {storedUser.classGrade} Â· {storedUser.institution}
-              </Text>
-            </View>
-            <View style={styles.returningBtn}>
-              <Text style={styles.returningBtnText}>Direct Login â†’</Text>
-            </View>
-          </TouchableOpacity>
-        ) : null}
 
         {/* Field 0: Full Name */}
         <View style={styles.field}>
@@ -368,8 +268,8 @@ export const SignInScreen: React.FC<SignInScreenProps> = ({ navigation }) => {
             style={styles.txtInput}
             value={fullName}
             onChangeText={setFullName}
-            placeholder="e.g. Rahul Sharma"
-            placeholderTextColor={colors.mutedDim}
+            placeholder="Student"
+            placeholderTextColor="rgba(232, 244, 237, 0.42)"
             autoCapitalize="words"
           />
         </View>
@@ -508,7 +408,7 @@ export const SignInScreen: React.FC<SignInScreenProps> = ({ navigation }) => {
             <View style={styles.streamWarn}>
               <AlertTriangle size={14} color="#FFAFA0" />
               <Text style={styles.streamWarnText}>
-                âš ï¸ Only for Science Stream students.
+                Only for Science Stream students.
               </Text>
             </View>
           )}
@@ -521,22 +421,25 @@ export const SignInScreen: React.FC<SignInScreenProps> = ({ navigation }) => {
             style={styles.txtInput}
             value={institution}
             onChangeText={setInstitution}
-            placeholder="e.g. Viswa Vignan"
-            placeholderTextColor={colors.mutedDim}
+            placeholder="Type your college / school name"
+            placeholderTextColor="rgba(232, 244, 237, 0.42)"
           />
 
           <TouchableOpacity
-            activeOpacity={0.8}
-            style={[styles.chkRow, level4Consent && styles.chkRowChecked]}
+            activeOpacity={0.85}
+            style={[styles.chkRow, level4Consent ? styles.chkRowChecked : styles.chkRowNeedsTick]}
             onPress={() => setLevel4Consent(!level4Consent)}
           >
-            <View style={[styles.chkBox, level4Consent && styles.chkBoxChecked]}>
-              {level4Consent && <Check size={12} color="#04140E" strokeWidth={3.5} />}
+            <View style={[styles.chkBox, level4Consent ? styles.chkBoxChecked : styles.chkBoxNeedsTick]}>
+              {level4Consent && <Check size={14} color="#04140E" strokeWidth={3.5} />}
             </View>
-            <Text style={styles.chkLabel}>
-              I understand I need approval &amp; support from my Institution from{' '}
-              <Text style={{ color: colors.text, fontWeight: '700' }}>Level-4</Text> onwards.
-            </Text>
+            <View style={styles.chkCopy}>
+              <Text style={styles.chkRequired}>Required · tick this box</Text>
+              <Text style={[styles.chkLabel, !level4Consent && styles.chkLabelNeedsTick]}>
+                I understand I need approval & support from my Institution from{' '}
+                <Text style={{ color: colors.gold, fontWeight: '700' }}>Level-4</Text> onwards.
+              </Text>
+            </View>
           </TouchableOpacity>
         </View>
 
@@ -701,7 +604,7 @@ export const SignInScreen: React.FC<SignInScreenProps> = ({ navigation }) => {
           <View style={styles.modalPanel}>
             <View style={styles.modalHeaderRow}>
               <Text style={styles.modalTitle}>
-                Select District Â· {selectedState}
+                Select District · {selectedState}
               </Text>
               <TouchableOpacity onPress={() => setShowCityModal(false)}>
                 <X size={20} color={colors.text} />
@@ -787,13 +690,13 @@ const styles = StyleSheet.create({
     marginBottom: 12,
   },
   finalBadgeText: {
-    fontSize: 10.5,
+    fontSize: 12.5,
     fontWeight: typography.fontWeight.extrabold,
     color: colors.teal,
   },
   whizLine: {
     textAlign: 'center',
-    fontSize: 11.5,
+    fontSize: 13.5,
     fontWeight: typography.fontWeight.bold,
     color: colors.gold,
     marginBottom: 18,
@@ -808,14 +711,14 @@ const styles = StyleSheet.create({
   signInSub: {
     textAlign: 'center',
     color: colors.muted,
-    fontSize: 12.5,
+    fontSize: 14,
     marginBottom: 20,
   },
   field: {
     marginBottom: 18,
   },
   fieldLabel: {
-    fontSize: 12.5,
+    fontSize: 14,
     fontWeight: typography.fontWeight.bold,
     color: colors.text,
     marginBottom: 9,
@@ -884,38 +787,62 @@ const styles = StyleSheet.create({
   chkRow: {
     flexDirection: 'row',
     alignItems: 'flex-start',
-    gap: 9,
-    marginTop: 10,
-    paddingVertical: 11,
-    paddingHorizontal: 12,
-    borderRadius: 9,
+    gap: 12,
+    marginTop: 14,
+    paddingVertical: 14,
+    paddingHorizontal: 14,
+    borderRadius: 12,
     backgroundColor: colors.card,
     borderWidth: 1.5,
     borderColor: colors.border,
+  },
+  chkRowNeedsTick: {
+    borderWidth: 2,
+    borderColor: colors.gold,
+    backgroundColor: 'rgba(245, 197, 66, 0.14)',
   },
   chkRowChecked: {
     borderColor: colors.teal,
     backgroundColor: colors.tealAlpha10,
   },
   chkBox: {
-    width: 16,
-    height: 16,
-    borderRadius: 4,
+    width: 22,
+    height: 22,
+    borderRadius: 6,
     borderWidth: 1.5,
     borderColor: colors.border,
     alignItems: 'center',
     justifyContent: 'center',
     marginTop: 1,
   },
+  chkBoxNeedsTick: {
+    borderWidth: 2.5,
+    borderColor: colors.gold,
+    backgroundColor: 'rgba(245, 197, 66, 0.22)',
+  },
   chkBoxChecked: {
     backgroundColor: colors.teal,
     borderColor: colors.teal,
   },
+  chkCopy: {
+    flex: 1,
+    gap: 4,
+  },
+  chkRequired: {
+    fontSize: 11,
+    fontWeight: typography.fontWeight.bold,
+    color: colors.gold,
+    letterSpacing: 0.4,
+    textTransform: 'uppercase',
+  },
   chkLabel: {
     flex: 1,
-    fontSize: 11,
+    fontSize: 12.5,
     color: colors.muted,
     lineHeight: 16,
+  },
+  chkLabelNeedsTick: {
+    color: colors.text,
   },
   locGrid: {
     flexDirection: 'row',
@@ -1068,24 +995,24 @@ const styles = StyleSheet.create({
     fontWeight: typography.fontWeight.regular,
   },
   fieldHint: {
-    fontSize: 10.5,
+    fontSize: 12,
     color: colors.mutedDim,
     marginTop: 5,
-    lineHeight: 14,
+    lineHeight: 16,
   },
   lockedChip: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 3,
+    gap: 4,
     backgroundColor: 'rgba(240, 180, 41, 0.12)',
     borderWidth: 1,
     borderColor: 'rgba(240, 180, 41, 0.35)',
-    paddingHorizontal: 6,
-    paddingVertical: 2,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
     borderRadius: 4,
   },
   lockedText: {
-    fontSize: 8.5,
+    fontSize: 11.5,
     fontWeight: typography.fontWeight.extrabold,
     color: colors.gold,
     letterSpacing: 0.3,
@@ -1098,7 +1025,7 @@ const styles = StyleSheet.create({
     borderWidth: 1.5,
     borderColor: colors.tealAlpha35,
     borderRadius: 14,
-    padding: 14,
+    padding: 16,
     marginBottom: 20,
   },
   returningLeft: {
@@ -1106,7 +1033,7 @@ const styles = StyleSheet.create({
     marginRight: 10,
   },
   returningTitle: {
-    fontSize: 13.5,
+    fontSize: 15,
     fontWeight: typography.fontWeight.bold,
     color: colors.teal,
     marginBottom: 3,

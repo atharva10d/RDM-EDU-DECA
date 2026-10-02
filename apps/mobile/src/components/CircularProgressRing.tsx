@@ -74,15 +74,15 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   levelNum: {
-    fontSize: 20,
+    fontSize: 22,
     fontWeight: typography.fontWeight.extrabold,
     color: colors.text,
-    lineHeight: 22,
+    lineHeight: 24,
   },
   levelTag: {
-    fontSize: 7.5,
+    fontSize: 10,
     color: colors.mutedDim,
-    letterSpacing: 0.4,
+    letterSpacing: 0.8,
     fontWeight: typography.fontWeight.bold,
   },
 });

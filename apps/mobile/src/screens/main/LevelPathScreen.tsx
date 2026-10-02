@@ -5,6 +5,7 @@ import {
   StyleSheet,
   ScrollView,
   TouchableOpacity,
+  Alert,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -13,6 +14,7 @@ import { colors, typography, borderRadius, spacing, Card } from '@edudeca/ui';
 import { LEVEL_PATH_DATA } from '../../utils/mockData';
 import { useAppStore } from '../../store/useAppStore';
 import { ArrowLeft, Lock } from 'lucide-react-native';
+import { canStartLevel, levelPathStatus } from '../../services/studentLoop/levelPathStatus';
 
 type LevelPathScreenNavigationProp = NativeStackNavigationProp<
   DashboardStackParamList,
@@ -24,11 +26,11 @@ interface LevelPathScreenProps {
 }
 
 export const LevelPathScreen: React.FC<LevelPathScreenProps> = ({ navigation }) => {
-  const level = useAppStore((state) => state.level);
+  const campaignLevel = useAppStore((state) => state.campaignLevel);
   const rdmBalance = useAppStore((state) => state.rdmBalance);
   const streak = useAppStore((state) => state.streak);
 
-  const currentLevel = Math.max(1, level);
+  const currentLevel = Math.max(1, campaignLevel);
 
   const tierColors: Record<string, string> = {
     free: colors.teal,
@@ -43,7 +45,7 @@ export const LevelPathScreen: React.FC<LevelPathScreenProps> = ({ navigation }) 
   };
 
   return (
-    <SafeAreaView style={styles.safeArea}>
+    <SafeAreaView style={styles.safeArea} edges={['top', 'left', 'right']}>
       <ScrollView
         contentContainerStyle={styles.scrollContainer}
         showsVerticalScrollIndicator={false}
@@ -125,8 +127,9 @@ export const LevelPathScreen: React.FC<LevelPathScreenProps> = ({ navigation }) 
           <View style={styles.timelineTrack} />
 
           {LEVEL_PATH_DATA.map((node) => {
-            const isCurrent = node.n === currentLevel;
-            const isLocked = node.n > currentLevel;
+            const status = levelPathStatus(node.n, campaignLevel, false);
+            const isCurrent = status === 'current';
+            const isLocked = status === 'locked';
             const nodeColor = tierColors[node.tier] || colors.teal;
             const statusLabel = isCurrent
               ? ' — You are here'
@@ -134,8 +137,35 @@ export const LevelPathScreen: React.FC<LevelPathScreenProps> = ({ navigation }) 
               ? ''
               : ' — Complete';
 
+            const onPressNode = () => {
+              if (!canStartLevel(node.n, campaignLevel, false)) {
+                Alert.alert(
+                  isLocked ? 'Level locked' : 'Already complete',
+                  isLocked
+                    ? 'Only your current campaign level can start.'
+                    : 'This level is already done.',
+                );
+                return;
+              }
+              const level = Math.max(1, campaignLevel || 1);
+              const parent = navigation?.getParent?.();
+              if (parent) {
+                parent.navigate('DashboardTab', {
+                  screen: 'Quiz',
+                  params: { level },
+                });
+                return;
+              }
+              navigation?.navigate('Quiz', { level });
+            };
+
             return (
-              <View key={node.n} style={styles.timelineNode}>
+              <TouchableOpacity
+                key={node.n}
+                style={styles.timelineNode}
+                activeOpacity={0.85}
+                onPress={onPressNode}
+              >
                 {/* Node Number Circle */}
                 <View
                   style={[
@@ -184,7 +214,7 @@ export const LevelPathScreen: React.FC<LevelPathScreenProps> = ({ navigation }) 
                   </View>
                   <Text style={styles.nodeSub}>{node.sub}</Text>
                 </View>
-              </View>
+              </TouchableOpacity>
             );
           })}
         </View>
@@ -201,7 +231,7 @@ const styles = StyleSheet.create({
   scrollContainer: {
     paddingHorizontal: 18,
     paddingTop: 14,
-    paddingBottom: 90,
+    paddingBottom: 28,
   },
   header: {
     flexDirection: 'row',
@@ -220,13 +250,14 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   headerTitle: {
-    fontSize: 15,
+    fontSize: 18,
     fontWeight: typography.fontWeight.extrabold,
     color: colors.text,
   },
   headerSub: {
-    fontSize: 10,
+    fontSize: 12.5,
     color: colors.mutedDim,
+    marginTop: 2,
   },
   statsRow: {
     flexDirection: 'row',
@@ -238,18 +269,18 @@ const styles = StyleSheet.create({
     backgroundColor: colors.card,
     borderWidth: 1,
     borderColor: colors.border,
-    borderRadius: 11,
-    padding: 10,
+    borderRadius: 14,
+    padding: 12,
   },
   statLabel: {
-    fontSize: 8.5,
+    fontSize: 11.5,
     color: colors.mutedDim,
     textTransform: 'uppercase',
-    letterSpacing: 0.4,
+    letterSpacing: 0.5,
     fontWeight: typography.fontWeight.bold,
   },
   statVal: {
-    fontSize: 13.5,
+    fontSize: 16.5,
     fontWeight: typography.fontWeight.extrabold,
     color: colors.text,
     marginTop: 3,
@@ -263,9 +294,9 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingVertical: 11,
-    paddingHorizontal: 13,
-    borderRadius: 11,
+    paddingVertical: 14,
+    paddingHorizontal: 16,
+    borderRadius: 14,
     borderWidth: 1,
   },
   stageFree: {
@@ -281,45 +312,45 @@ const styles = StyleSheet.create({
     borderColor: colors.pinkAlpha30,
   },
   stageTitle: {
-    fontSize: 12.5,
+    fontSize: 15,
     fontWeight: typography.fontWeight.bold,
     color: colors.text,
   },
   stageSub: {
-    fontSize: 10,
+    fontSize: 12.5,
     color: colors.mutedDim,
     marginTop: 2,
   },
   tagFree: {
     backgroundColor: colors.teal,
-    paddingVertical: 4,
-    paddingHorizontal: 10,
+    paddingVertical: 5,
+    paddingHorizontal: 11,
     borderRadius: borderRadius.round,
   },
   tagFreeText: {
-    fontSize: 10,
+    fontSize: 12,
     fontWeight: typography.fontWeight.extrabold,
     color: '#04140E',
   },
   tagPaid: {
     backgroundColor: colors.purple,
-    paddingVertical: 4,
-    paddingHorizontal: 10,
+    paddingVertical: 5,
+    paddingHorizontal: 11,
     borderRadius: borderRadius.round,
   },
   tagPaidText: {
-    fontSize: 10,
+    fontSize: 12,
     fontWeight: typography.fontWeight.extrabold,
     color: '#FFFFFF',
   },
   tagFinals: {
     backgroundColor: colors.pink,
-    paddingVertical: 4,
-    paddingHorizontal: 10,
+    paddingVertical: 5,
+    paddingHorizontal: 11,
     borderRadius: borderRadius.round,
   },
   tagFinalsText: {
-    fontSize: 10,
+    fontSize: 12,
     fontWeight: typography.fontWeight.extrabold,
     color: '#FFFFFF',
   },
@@ -341,11 +372,11 @@ const styles = StyleSheet.create({
   },
   nodeCircle: {
     position: 'absolute',
-    left: -26,
+    left: -28,
     top: 0,
-    width: 24,
-    height: 24,
-    borderRadius: 12,
+    width: 28,
+    height: 28,
+    borderRadius: 14,
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: 3,
@@ -353,14 +384,14 @@ const styles = StyleSheet.create({
     zIndex: 2,
   },
   nodeCircleText: {
-    fontSize: 11,
+    fontSize: 13,
     fontWeight: typography.fontWeight.extrabold,
     color: '#04140E',
   },
   nodeBody: {
-    paddingVertical: 10,
-    paddingHorizontal: 14,
-    borderRadius: 11,
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    borderRadius: 14,
     backgroundColor: colors.card,
     borderWidth: 1,
     borderColor: colors.border,
@@ -375,23 +406,23 @@ const styles = StyleSheet.create({
     gap: 6,
   },
   nodeTitle: {
-    fontSize: 13,
+    fontSize: 15.5,
     fontWeight: typography.fontWeight.bold,
     color: colors.text,
     flex: 1,
   },
   nodeSub: {
-    fontSize: 10.5,
+    fontSize: 12.5,
     color: colors.mutedDim,
-    marginTop: 2,
+    marginTop: 3,
   },
   tierBadge: {
-    paddingVertical: 3,
-    paddingHorizontal: 8,
+    paddingVertical: 4,
+    paddingHorizontal: 9,
     borderRadius: 14,
   },
   tierBadgeText: {
-    fontSize: 9.5,
+    fontSize: 11.5,
     fontWeight: typography.fontWeight.extrabold,
   },
 });

@@ -10,7 +10,10 @@
     "android": "expo start --android",
     "ios": "expo start --ios",
     "web": "expo start --web",
-    "type-check": "tsc --noEmit"
+    "type-check": "tsc --noEmit",
+    "eas:android:dev": "npx --yes eas-cli build --platform android --profile development --non-interactive --no-wait",
+    "eas:android:preview": "npx --yes eas-cli build --platform android --profile preview --non-interactive --no-wait",
+    "test": "pnpm dlx tsx --test src/navigation/isMainAuthenticated.test.ts src/services/studentLoop/profileGate.test.ts src/services/studentLoop/profileColumns.test.ts src/services/studentLoop/mapChallengeQuestion.test.ts src/services/studentLoop/displayChallengeOptions.test.ts src/services/studentLoop/challengeCompletePayload.test.ts src/services/studentLoop/applyServerProgress.test.ts src/services/studentLoop/quizResults.test.ts src/lib/googleSignInMode.test.ts src/services/studentLoop/challengeSpec.test.ts src/services/studentLoop/levelPathStatus.test.ts src/services/studentLoop/mapLeaderboard.test.ts src/services/studentLoop/mapReferralMine.test.ts src/services/studentLoop/edudecaInviteMessage.test.ts src/services/studentLoop/visibleLeaderboardRows.test.ts src/services/studentLoop/displayReferralCode.test.ts src/store/persistSlice.test.ts src/services/studentLoop/reuseSupabaseSession.test.ts src/services/studentLoop/trialsCopy.test.ts src/services/studentLoop/lineupPath.test.ts src/services/studentLoop/questionSeen.test.ts"
   },
   "dependencies": {
     "@babel/runtime": "^7.26.0",
@@ -24,7 +27,6 @@
     "@react-navigation/native-stack": "^7.0.0",
     "@supabase/supabase-js": "^2.116.0",
     "expo": "57.0.16",
-    "expo-auth-session": "^57.0.8",
     "expo-clipboard": "~57.0.1",
     "expo-constants": "^57.0.16",
     "expo-dev-client": "^57.0.19",
@@ -32,13 +34,11 @@
     "expo-modules-core": "~57.0.13",
     "expo-secure-store": "~57.0.1",
     "expo-status-bar": "~57.0.1",
-    "expo-web-browser": "^57.0.2",
     "lucide-react-native": "^0.395.0",
     "react": "19.2.3",
     "react-dom": "19.2.3",
     "react-native": "0.86.2",
     "react-native-gesture-handler": "~2.32.0",
-    "react-native-reanimated": "4.5.1",
     "react-native-safe-area-context": "~5.7.0",
     "react-native-screens": "~4.26.0",
     "react-native-svg": "15.15.4",

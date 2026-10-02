@@ -14,6 +14,7 @@ import { RouteProp } from '@react-navigation/native';
 import { DashboardStackParamList } from '../../navigation/types';
 import { colors, typography, borderRadius, Button, Card } from '@edudeca/ui';
 import { useAppStore } from '../../store/useAppStore';
+import { formatTrialsLeft } from '../../services/studentLoop/trialsCopy';
 import { MessageCircle, Instagram, Zap, Award, AlertCircle } from 'lucide-react-native';
 
 type ResultsScreenNavigationProp = NativeStackNavigationProp<DashboardStackParamList, 'Results'>;
@@ -54,10 +55,10 @@ export const ResultsScreen: React.FC<ResultsScreenProps> = ({ navigation, route 
   } else {
     if (trialsRemaining > 0) {
       title = 'Try Again';
-      subText = `${trialsRemaining} attempts left today.`;
+      subText = formatTrialsLeft(trialsRemaining) + '.';
     } else {
       title = 'Attempts Exhausted';
-      subText = 'No more attempts today. Come back tomorrow.';
+      subText = 'No more trials left on this level.';
     }
   }
 
@@ -142,21 +143,21 @@ const styles = StyleSheet.create({
   scrollContainer: { paddingHorizontal: 18, paddingTop: 22, paddingBottom: 40 },
   resultsHero: { alignItems: 'center', marginBottom: 16 },
   resultsEmoji: { fontSize: 52, marginBottom: 10 },
-  resultsTitle: { fontSize: 21, fontWeight: typography.fontWeight.extrabold, color: colors.text, marginBottom: 4 },
-  resultsSub: { fontSize: 12.5, color: colors.muted, marginBottom: 16, textAlign: 'center' },
+  resultsTitle: { fontSize: 24, fontWeight: typography.fontWeight.extrabold, color: colors.text, marginBottom: 4 },
+  resultsSub: { fontSize: 14.5, color: colors.muted, marginBottom: 16, textAlign: 'center' },
   scoreWrap: { alignItems: 'center', justifyContent: 'center', marginBottom: 24 },
   scoreBig: { fontSize: typography.fontSize.score, fontWeight: typography.fontWeight.extrabold, color: colors.text },
   scoreOf: { fontSize: 18, color: colors.mutedDim, fontWeight: typography.fontWeight.semibold },
   resultsStatsRow: { flexDirection: 'row', gap: 10, marginBottom: 18 },
-  rstat: { flex: 1, backgroundColor: colors.card, borderWidth: 1, borderColor: colors.border, borderRadius: borderRadius.md, paddingVertical: 12, paddingHorizontal: 8, alignItems: 'center' },
-  rstatVal: { fontSize: 16, fontWeight: typography.fontWeight.extrabold, color: colors.teal },
-  rstatLbl: { fontSize: 9, color: colors.mutedDim, textTransform: 'uppercase', marginTop: 2, fontWeight: typography.fontWeight.bold },
-  priorityCard: { padding: 14, backgroundColor: colors.goldAlpha10, borderColor: colors.goldAlpha35, marginBottom: 16 },
+  rstat: { flex: 1, backgroundColor: colors.card, borderWidth: 1, borderColor: colors.border, borderRadius: borderRadius.md, paddingVertical: 14, paddingHorizontal: 10, alignItems: 'center' },
+  rstatVal: { fontSize: 18, fontWeight: typography.fontWeight.extrabold, color: colors.teal },
+  rstatLbl: { fontSize: 11.5, color: colors.mutedDim, textTransform: 'uppercase', marginTop: 3, fontWeight: typography.fontWeight.bold, letterSpacing: 0.4 },
+  priorityCard: { padding: 16, backgroundColor: colors.goldAlpha10, borderColor: colors.goldAlpha35, marginBottom: 16 },
   leveledUpRow: { flexDirection: 'row', alignItems: 'center', gap: 12 },
-  leveledUpTitle: { fontSize: 14, fontWeight: typography.fontWeight.extrabold, color: colors.gold, marginBottom: 2 },
-  leveledUpDesc: { fontSize: 11.5, color: colors.text, lineHeight: 16 },
+  leveledUpTitle: { fontSize: 16, fontWeight: typography.fontWeight.extrabold, color: colors.gold, marginBottom: 2 },
+  leveledUpDesc: { fontSize: 13.5, color: colors.text, lineHeight: 18 },
   shareRow: { flexDirection: 'row', gap: 10, marginBottom: 16 },
-  shareBtn: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingVertical: 12, borderRadius: borderRadius.md, backgroundColor: colors.card, borderWidth: 1, borderColor: colors.border },
-  shareBtnText: { fontSize: 12, fontWeight: typography.fontWeight.bold, color: colors.text },
+  shareBtn: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingVertical: 14, minHeight: 48, borderRadius: borderRadius.md, backgroundColor: colors.card, borderWidth: 1, borderColor: colors.border },
+  shareBtnText: { fontSize: 14, fontWeight: typography.fontWeight.bold, color: colors.text },
   continueBtn: { marginTop: 4 },
 });

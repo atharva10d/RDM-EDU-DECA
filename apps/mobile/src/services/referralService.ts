@@ -1,98 +1,69 @@
-import { apiClient } from './apiClient';
-import {
-  IReferral,
-  ReferralBatchPayload,
-  ApiResponse,
-  CommunityRoom,
-} from '@edudeca/types';
+import { CommunityMember, CommunityRoom } from '@edudeca/types';
+import { edudecaApi } from './edudecaApi';
+import { mapReferralMine, type ReferralMine } from './studentLoop/mapReferralMine';
+
+function roomFromMine(mine: ReferralMine, hostId?: string): CommunityRoom | null {
+  if (!mine.code) return null;
+  const members: CommunityMember[] = mine.entries.map((entry) => ({
+    userId: entry.refereeUserId,
+    name: entry.name || 'Student',
+    institution: '',
+    classGrade: '',
+    level: 1,
+    rdmBalance: 0,
+    joinedAt: entry.creditedAt,
+  }));
+  return {
+    hostId: hostId ?? '',
+    hostName: 'Student',
+    hostInstitution: '',
+    roomCode: mine.code,
+    members,
+    totalMembers: members.length,
+    collectiveRdm: 0,
+  };
+}
 
 export const referralService = {
-  /**
-   * Submits batch viral referrals to earn RDM coins
-   */
-  submitBatchReferrals: async (
-    contacts: Array<{ name: string; phone?: string; email?: string }>,
-    userId?: string
-  ): Promise<{ insertedCount: number; rewardRdm: number; totalEarned: number }> => {
-    const headers = userId ? { 'x-user-id': userId } : undefined;
-    const response = await apiClient.post<
-      ApiResponse<{ insertedCount: number; rewardRdm: number; totalEarned: number }>
-    >('/referrals/batch', { contacts }, { headers });
-
-    if (!response.data) {
-      throw new Error(response.error || 'Failed to submit referrals');
-    }
-
-    return response.data;
+  fetchMine: async (): Promise<ReferralMine> => {
+    return mapReferralMine(await edudecaApi.getReferralMine());
   },
 
-  /**
-   * Fetches user's viral referral history and reward status
-   */
-  fetchMyReferrals: async (userId?: string): Promise<IReferral[]> => {
-    const headers = userId ? { 'x-user-id': userId } : undefined;
-    const response = await apiClient.get<ApiResponse<IReferral[]>>('/referrals/me', undefined, {
-      headers,
-    });
-
-    return response.data || [];
-  },
-
-  /**
-   * Fetches the current user's own community squad room
-   */
   fetchMyRoom: async (userId?: string): Promise<CommunityRoom | null> => {
-    const headers = userId ? { 'x-user-id': userId } : undefined;
-    const response = await apiClient.get<ApiResponse<CommunityRoom>>('/referrals/my-room', undefined, {
-      headers,
-    });
-    return response.data || null;
+    const mine = await referralService.fetchMine();
+    return roomFromMine(mine, userId);
   },
 
-  /**
-   * Fetches any community squad room by referral code
-   */
-  fetchRoomByCode: async (code: string, userId?: string): Promise<CommunityRoom | null> => {
-    const headers = userId ? { 'x-user-id': userId } : undefined;
-    const response = await apiClient.get<ApiResponse<CommunityRoom>>(
-      `/referrals/room/${encodeURIComponent(code)}`,
-      undefined,
-      { headers }
-    );
-    return response.data || null;
+  fetchJoinedRoom: async (_userId?: string): Promise<CommunityRoom | null> => {
+    return null;
   },
 
-  /**
-   * Join a community squad room using a host's referral code
-   */
   joinCommunityRoom: async (
     roomCode: string,
-    userId?: string
+    _userId?: string,
   ): Promise<{ room: CommunityRoom; awardedRdm: number; message: string }> => {
-    const headers = userId ? { 'x-user-id': userId } : undefined;
-    const response = await apiClient.post<
-      ApiResponse<CommunityRoom> & { awardedRdm?: number; message?: string }
-    >('/referrals/join-room', { roomCode }, { headers });
-
-    if (!response.data) {
-      throw new Error(response.error || 'Failed to join squad room');
-    }
-
+    await edudecaApi.claimReferral(roomCode);
     return {
-      room: response.data,
-      awardedRdm: (response as any).awardedRdm || 50,
-      message: (response as any).message || 'Joined squad room!',
+      room: {
+        hostId: '',
+        hostName: 'Student',
+        hostInstitution: '',
+        roomCode,
+        members: [],
+        totalMembers: 0,
+        collectiveRdm: 0,
+      },
+      awardedRdm: 0,
+      message: 'Referral claimed.',
     };
   },
 
-  /**
-   * Fetches the squad room the current user has joined (if any)
-   */
-  fetchJoinedRoom: async (userId?: string): Promise<CommunityRoom | null> => {
-    const headers = userId ? { 'x-user-id': userId } : undefined;
-    const response = await apiClient.get<ApiResponse<CommunityRoom>>('/referrals/joined-room', undefined, {
-      headers,
-    });
-    return response.data || null;
+  submitBatchReferrals: async (
+    _contacts: Array<{ name: string; phone?: string; email?: string }>,
+    _userId?: string,
+  ): Promise<{ insertedCount: number; rewardRdm: number; totalEarned: number }> => {
+    return { insertedCount: 0, rewardRdm: 0, totalEarned: 0 };
   },
+
+  fetchMyReferrals: async (_userId?: string) => [],
 };

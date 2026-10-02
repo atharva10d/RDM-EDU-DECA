@@ -18,8 +18,15 @@ import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { DashboardStackParamList } from '../../navigation/types';
 import { colors, typography, borderRadius, spacing, Button, Card } from '@edudeca/ui';
 import { useAppStore } from '../../store/useAppStore';
-import { userService } from '../../services';
+import { userService, referralService } from '../../services';
+import { progressService } from '../../services/progressService';
+import { lineupForTrack } from '../../services/studentLoop/lineupPath';
 import { supabase } from '../../lib/supabase';
+import { signOutGoogleAndSupabase } from '../../lib/googleAuth';
+import * as Clipboard from 'expo-clipboard';
+import { displayReferralCode } from '../../services/studentLoop/displayReferralCode';
+import { edudecaInviteMessage } from '../../services/studentLoop/edudecaInviteMessage';
+import { honestProfileText } from '../../services/studentLoop/profileColumns';
 import {
   ArrowLeft,
   User as UserIcon,
@@ -91,6 +98,16 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({ navigation }) => {
     } catch (_err) {
       // Offline fallback
     }
+
+    try {
+      const mine = await referralService.fetchMine();
+      const code = displayReferralCode(mine.code);
+      if (code) {
+        setUser({ referralCode: code });
+      }
+    } catch (_err) {
+      // Keep existing code if mine is unavailable
+    }
   }, [user?.id, user.email, setUser, setUserProfile]);
 
   useEffect(() => {
@@ -127,11 +144,10 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({ navigation }) => {
     };
 
     try {
-      // Update local state immediately
       setUser(updatedData);
       setSelectedTrack(editTrack);
-
-      // Sync to Supabase backend database
+      const lineup = lineupForTrack(editTrack, useAppStore.getState().disciplines);
+      await progressService.saveDisciplines(lineup);
       await userService.updateUserProfile(updatedData, user?.id);
       setEditModalVisible(false);
       Alert.alert('Success', 'Profile updated successfully! 🎉');
@@ -143,16 +159,31 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({ navigation }) => {
     }
   };
 
-  const handleCopyCode = () => {
-    Alert.alert('Referral Code', `Code ${user.referralCode || 'EDUD1000'} copied!`);
+  const referralCode = displayReferralCode(user.referralCode);
+
+  const handleCopyCode = async () => {
+    if (!referralCode) {
+      Alert.alert('Referral', 'No referral code yet. Pull to refresh.');
+      return;
+    }
+    try {
+      await Clipboard.setStringAsync(referralCode);
+      Alert.alert('Copied', referralCode);
+    } catch (_err) {
+      Alert.alert('Referral code', referralCode);
+    }
   };
 
   const handleShareReferral = async () => {
+    if (!referralCode) {
+      Alert.alert('Referral', 'No referral code yet. Pull to refresh.');
+      return;
+    }
     try {
+      const mine = await referralService.fetchMine();
+      const url = mine.shareUrl || '';
       await Share.share({
-        message: `🏆 Join me on EduDeca — India's Premier 10-Discipline Student Challenge! Use my referral code: ${
-          user.referralCode || 'EDUD1000'
-        }`,
+        message: edudecaInviteMessage(url, displayReferralCode(mine.code) || referralCode),
       });
     } catch (_err) {
       // Ignored
@@ -167,7 +198,7 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({ navigation }) => {
         style: 'destructive',
         onPress: async () => {
           try {
-            await supabase.auth.signOut();
+            await signOutGoogleAndSupabase();
           } catch (_err) {
             // Ignored
           }
@@ -177,7 +208,8 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({ navigation }) => {
     ]);
   };
 
-  const userInitials = (user.name || 'Whiz Student')
+  const userInitials = honestProfileText(user.name)
+    .replace(/^—$/, 'S')
     .split(' ')
     .map((n) => n[0])
     .join('')
@@ -193,7 +225,7 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({ navigation }) => {
   };
 
   return (
-    <SafeAreaView style={styles.safeArea}>
+    <SafeAreaView style={styles.safeArea} edges={['top', 'left', 'right']}>
       <ScrollView
         contentContainerStyle={styles.scrollContainer}
         showsVerticalScrollIndicator={false}
@@ -206,8 +238,8 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({ navigation }) => {
           />
         }
       >
-        {/* Header */}
-        <View style={styles.header}>
+        {/* Premium Header Block */}
+        <View style={styles.premiumHeaderBlock}>
           <TouchableOpacity
             activeOpacity={0.7}
             style={styles.backBtn}
@@ -215,13 +247,24 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({ navigation }) => {
           >
             <ArrowLeft size={18} color={colors.text} />
           </TouchableOpacity>
-          <Text style={styles.headerTitle}>My Profile</Text>
+          <View style={styles.headerCenter}>
+            <View style={styles.headerBadgeRow}>
+              <View style={[styles.headerBadge, { backgroundColor: colors.tealAlpha10, borderColor: colors.tealAlpha35 }]}>
+                <UserIcon size={11} color={colors.teal} />
+                <Text style={[styles.headerBadgeText, { color: colors.teal }]}>STUDENT PROFILE</Text>
+              </View>
+            </View>
+            <Text style={styles.headerBlockTitle}>My Profile</Text>
+            <Text style={styles.headerBlockSubtitle} numberOfLines={1}>
+              Manage your track, score & settings
+            </Text>
+          </View>
           <TouchableOpacity
             activeOpacity={0.7}
             style={styles.editHeaderBtn}
             onPress={handleOpenEdit}
           >
-            <Edit3 size={16} color={colors.teal} />
+            <Edit3 size={15} color={colors.teal} />
             <Text style={styles.editHeaderText}>Edit</Text>
           </TouchableOpacity>
         </View>
@@ -234,7 +277,7 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({ navigation }) => {
             </View>
             <View style={styles.userInfo}>
               <View style={styles.nameRow}>
-                <Text style={styles.userName}>{user.name || 'Whiz Student'}</Text>
+                <Text style={styles.userName}>{honestProfileText(user.name)}</Text>
                 <View style={styles.verifiedChip}>
                   <CheckCircle2 size={12} color={colors.teal} />
                   <Text style={styles.verifiedText}>Verified</Text>
@@ -282,7 +325,7 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({ navigation }) => {
 
         {/* Academic & Competition Info */}
         <Card style={styles.infoCard}>
-          <Text style={styles.cardSectionTitle}>Academic &amp; Registration Details</Text>
+          <Text style={styles.cardSectionTitle}>Academic & Registration Details</Text>
 
           {/* Registered Email Row (Locked & Permanent) */}
           <View style={styles.detailRow}>
@@ -308,7 +351,7 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({ navigation }) => {
             <View style={styles.detailTextWrap}>
               <Text style={styles.detailLabel}>Institution / School</Text>
               <Text style={styles.detailValue}>
-                {user.institution || 'Viswa Vignan'}
+                {honestProfileText(user.institution)}
               </Text>
             </View>
           </View>
@@ -322,7 +365,7 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({ navigation }) => {
               <Text style={styles.detailValue}>
                 {user.city && user.state
                   ? `${user.city}, ${user.state}`
-                  : user.state || 'All India'}
+                  : honestProfileText(user.state || user.city)}
               </Text>
             </View>
           </View>
@@ -344,11 +387,20 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({ navigation }) => {
           <View style={styles.detailDivider} />
 
           <View style={styles.detailRow}>
-            <CheckCircle2 size={16} color={colors.teal} style={styles.detailIcon} />
+            <CheckCircle2
+              size={16}
+              color={user.level4Consent ? colors.teal : colors.muted}
+              style={styles.detailIcon}
+            />
             <View style={styles.detailTextWrap}>
               <Text style={styles.detailLabel}>Level-4 Institution Support Consent</Text>
-              <Text style={[styles.detailValue, { color: colors.teal }]}>
-                {user.level4Consent ? 'Granted & Confirmed' : 'Granted'}
+              <Text
+                style={[
+                  styles.detailValue,
+                  { color: user.level4Consent ? colors.teal : colors.muted },
+                ]}
+              >
+                {user.level4Consent ? 'Granted' : 'Not granted'}
               </Text>
             </View>
           </View>
@@ -362,7 +414,7 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({ navigation }) => {
               <Text style={styles.referralSub}>Invite classmates to earn RDM bonuses</Text>
             </View>
             <View style={styles.codeBox}>
-              <Text style={styles.codeText}>{user.referralCode || 'EDUD1000'}</Text>
+              <Text style={styles.codeText}>{referralCode ?? '—'}</Text>
             </View>
           </View>
 
@@ -523,19 +575,60 @@ const styles = StyleSheet.create({
   scrollContainer: {
     paddingHorizontal: 18,
     paddingTop: 14,
-    paddingBottom: 90,
+    paddingBottom: 28,
   },
-  header: {
+  premiumHeaderBlock: {
+    minHeight: 88,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.card,
+    paddingVertical: 12,
+    paddingHorizontal: 14,
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
     marginBottom: 16,
+    gap: 12,
+  },
+  headerCenter: {
+    flex: 1,
+    justifyContent: 'center',
+  },
+  headerBadgeRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 4,
+  },
+  headerBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 7,
+    paddingVertical: 2,
+    borderRadius: 6,
+    borderWidth: 1,
+    alignSelf: 'flex-start',
+  },
+  headerBadgeText: {
+    fontSize: 10,
+    fontWeight: typography.fontWeight.extrabold,
+    letterSpacing: 0.8,
+  },
+  headerBlockTitle: {
+    fontSize: 18,
+    fontWeight: typography.fontWeight.extrabold,
+    color: colors.text,
+  },
+  headerBlockSubtitle: {
+    fontSize: 11.5,
+    color: colors.muted,
+    marginTop: 2,
   },
   backBtn: {
     width: 36,
     height: 36,
     borderRadius: 18,
-    backgroundColor: colors.card,
+    backgroundColor: colors.bg,
     borderWidth: 1,
     borderColor: colors.border,
     alignItems: 'center',
@@ -623,23 +716,23 @@ const styles = StyleSheet.create({
   },
   gradeBadge: {
     backgroundColor: 'rgba(255,255,255,0.06)',
-    paddingVertical: 3,
-    paddingHorizontal: 8,
+    paddingVertical: 4,
+    paddingHorizontal: 10,
     borderRadius: 6,
   },
   gradeBadgeText: {
-    fontSize: 10.5,
+    fontSize: 12.5,
     fontWeight: typography.fontWeight.bold,
     color: colors.text,
   },
   streamBadge: {
     backgroundColor: colors.tealAlpha10,
-    paddingVertical: 3,
-    paddingHorizontal: 8,
+    paddingVertical: 4,
+    paddingHorizontal: 10,
     borderRadius: 6,
   },
   streamBadgeText: {
-    fontSize: 10.5,
+    fontSize: 12.5,
     fontWeight: typography.fontWeight.bold,
     color: colors.teal,
   },
@@ -658,24 +751,25 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   statIconWrap: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
+    width: 34,
+    height: 34,
+    borderRadius: 17,
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: 6,
   },
   statVal: {
-    fontSize: 14,
+    fontSize: 16.5,
     fontWeight: typography.fontWeight.extrabold,
     color: colors.text,
     marginBottom: 2,
   },
   statLbl: {
-    fontSize: 9,
+    fontSize: 11.5,
     color: colors.mutedDim,
     textTransform: 'uppercase',
     fontWeight: typography.fontWeight.bold,
+    letterSpacing: 0.3,
   },
   infoCard: {
     padding: spacing.base,
@@ -858,28 +952,28 @@ const styles = StyleSheet.create({
     backgroundColor: colors.purpleAlpha08,
   },
   trackTitle: {
-    fontSize: 13,
+    fontSize: 15,
     fontWeight: typography.fontWeight.bold,
     color: colors.text,
     marginBottom: 2,
   },
   trackSub: {
-    fontSize: 10,
+    fontSize: 12.5,
     color: colors.mutedDim,
   },
   lockedChip: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 3,
+    gap: 4,
     backgroundColor: colors.goldAlpha12,
     borderWidth: 1,
     borderColor: colors.goldAlpha35,
-    paddingHorizontal: 6,
-    paddingVertical: 1.5,
-    borderRadius: 4,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 6,
   },
   lockedText: {
-    fontSize: 8.5,
+    fontSize: 11.5,
     fontWeight: typography.fontWeight.extrabold,
     color: colors.gold,
     letterSpacing: 0.3,
@@ -892,7 +986,7 @@ const styles = StyleSheet.create({
     marginTop: 10,
   },
   inputLabelLocked: {
-    fontSize: 12,
+    fontSize: 14,
     fontWeight: typography.fontWeight.bold,
     color: colors.text,
   },
@@ -903,12 +997,13 @@ const styles = StyleSheet.create({
     borderWidth: 1.5,
     borderColor: colors.border,
     borderRadius: 10,
-    paddingVertical: 11,
-    paddingHorizontal: 12,
+    paddingVertical: 12,
+    paddingHorizontal: 14,
     opacity: 0.85,
+    minHeight: 48,
   },
   readOnlyEmailText: {
-    fontSize: 13.5,
+    fontSize: 15,
     color: colors.muted,
     fontWeight: typography.fontWeight.medium,
   },

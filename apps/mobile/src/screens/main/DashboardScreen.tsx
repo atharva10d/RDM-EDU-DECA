@@ -1,4 +1,4 @@
-﻿import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useCallback } from 'react';
 import {
   View,
   Text,
@@ -6,9 +6,11 @@ import {
   ScrollView,
   TouchableOpacity,
   RefreshControl,
+  useWindowDimensions,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import { useFocusEffect } from '@react-navigation/native';
 import { DashboardStackParamList } from '../../navigation/types';
 import { colors, typography, borderRadius, spacing } from '@edudeca/ui';
 import { DEFAULT_DISCIPLINES } from '../../utils/mockData';
@@ -16,8 +18,14 @@ import { useAppStore } from '../../store/useAppStore';
 import { CircularProgressRing } from '../../components/CircularProgressRing';
 import { BurgerDrawer } from '../../components/BurgerDrawer';
 import { Bell, Menu, Zap, User } from 'lucide-react-native';
-import { userService, setCurrentUserId } from '../../services';
+import { userService } from '../../services';
 import { progressService } from '../../services/progressService';
+import {
+  challengeMaxStrikes,
+  challengeSessionDurationSec,
+} from '../../services/studentLoop/challengeSpec';
+import { formatTrialsLeft } from '../../services/studentLoop/trialsCopy';
+import { lineupForHome } from '../../services/studentLoop/lineupPath';
 
 type DashboardScreenNavigationProp = NativeStackNavigationProp<DashboardStackParamList, 'Dashboard'>;
 
@@ -30,23 +38,20 @@ export const DashboardScreen: React.FC<DashboardScreenProps> = ({ navigation }) 
   const [refreshing, setRefreshing] = useState(false);
 
   const user = useAppStore((state) => state.user);
-  const level = useAppStore((state) => state.level);
   const streak = useAppStore((state) => state.streak);
   const rdmBalance = useAppStore((state) => state.rdmBalance);
   const quizzesCompleted = useAppStore((state) => state.quizzesCompleted);
   const selectedTrack = useAppStore((state) => state.selectedTrack);
   const setUserProfile = useAppStore((state) => state.setUserProfile);
   const campaignLevel = useAppStore((state) => state.campaignLevel);
-  const todayCompleted = useAppStore((state) => state.todayCompleted);
   const freeZoneComplete = useAppStore((state) => state.freeZoneComplete);
   const trialsRemaining = useAppStore((state) => state.trialsRemaining);
+  const storedLineup = useAppStore((state) => state.disciplines);
+  const pendingPathTrack = useAppStore((state) => state.pendingPathTrack);
 
-  // Sync API state on mount and pull-to-refresh
+  // Sync API state on mount, returning to Home, and pull-to-refresh
   const loadUserData = useCallback(async () => {
     try {
-      if (user?.id) {
-        setCurrentUserId(user.id);
-      }
       await progressService.loadProgress();
       const profile = await userService.fetchCurrentUser(user?.id);
       if (profile) {
@@ -57,9 +62,11 @@ export const DashboardScreen: React.FC<DashboardScreenProps> = ({ navigation }) 
     }
   }, [user?.id, setUserProfile]);
 
-  useEffect(() => {
-    loadUserData();
-  }, [loadUserData]);
+  useFocusEffect(
+    useCallback(() => {
+      void loadUserData();
+    }, [loadUserData]),
+  );
 
   const onRefresh = async () => {
     setRefreshing(true);
@@ -67,10 +74,55 @@ export const DashboardScreen: React.FC<DashboardScreenProps> = ({ navigation }) 
     setRefreshing(false);
   };
 
-  // Filter 10 active disciplines based on selected track (A: Math/AMath, B: Bio/Biotech)
-  const activeDisciplines = DEFAULT_DISCIPLINES.filter(
-    (d) => !d.track || d.track === selectedTrack
-  ).slice(0, 10);
+  const { width: windowWidth } = useWindowDimensions();
+  const cardWidth = Math.floor((windowWidth - 36 - 16) / 3);
+
+  const DISCIPLINE_LABELS: Record<string, { name: string; tag: string; color: string }> = {
+    phy: { name: 'Physics', tag: 'PHY', color: 'teal' },
+    che: { name: 'Chemistry', tag: 'CHEM', color: 'amber' },
+    ent: { name: 'Entrepreneurship', tag: 'ENT', color: 'gold' },
+    eng: { name: 'English', tag: 'VERB', color: 'blue' },
+    eco: { name: 'Economics', tag: 'QUANT', color: 'amber' },
+    log: { name: 'Logical Reasoning', tag: 'ANLYT', color: 'purple' },
+    gk: { name: 'GK', tag: 'GK', color: 'gold' },
+    fin: { name: 'Financial Literacy', tag: 'FIN', color: 'pink' },
+    mat: { name: 'Mathematics', tag: 'MATH', color: 'teal' },
+    amat: { name: 'Applied Mathematics', tag: 'AMATH', color: 'teal' },
+    bio: { name: 'Biology', tag: 'BIO', color: 'teal' },
+    biotech: { name: 'Biotechnology', tag: 'BTC', color: 'purple' },
+  };
+
+  const lineupIds = lineupForHome({
+    pendingTrack: pendingPathTrack,
+    selectedTrack: selectedTrack === 'B' || user?.selectedTrack === 'B' ? 'B' : 'A',
+    disciplines: storedLineup,
+  });
+  const effectiveTrack =
+    pendingPathTrack === 'B' || selectedTrack === 'B' || user?.selectedTrack === 'B'
+      ? 'B'
+      : 'A';
+
+  const activeDisciplines = (() => {
+    if (lineupIds.length === 10) {
+      return lineupIds.map((id) => {
+        const meta = DISCIPLINE_LABELS[id] || { name: id, tag: id.toUpperCase(), color: 'teal' };
+        return { id, name: meta.name, tag: meta.tag, color: meta.color };
+      });
+    }
+    const list = DEFAULT_DISCIPLINES.filter(
+      (d) => !d.track || d.track === effectiveTrack
+    );
+    if (list.length >= 10) return list.slice(0, 10);
+    const existing = new Set(list.map((d) => d.id));
+    for (const d of DEFAULT_DISCIPLINES) {
+      if (list.length >= 10) break;
+      if (!existing.has(d.id)) {
+        list.push(d);
+        existing.add(d.id);
+      }
+    }
+    return list.slice(0, 10);
+  })();
 
   const handleDrawerNavigate = (route: string) => {
     if (route === 'Dashboard') {
@@ -91,23 +143,20 @@ export const DashboardScreen: React.FC<DashboardScreenProps> = ({ navigation }) 
   };
 
   
-  const getLevelLimits = (lvl: number) => {
-    if (lvl === 1) return { time: 5, strikes: 5 };
-    if (lvl === 2) return { time: 10, strikes: 7 };
-    return { time: 20, strikes: 10 };
-  };
+  const getLevelLimits = (lvl: number) => ({
+    time: challengeSessionDurationSec(lvl) / 60,
+    strikes: challengeMaxStrikes(lvl),
+  });
   const limits = getLevelLimits(campaignLevel);
   const zoneTitle =
-    level === 0
-      ? 'Level 0 Â· Not started'
-      : level <= 3
-      ? `Level ${level} Â· Free Zone`
-      : level <= 6
-      ? `Level ${level} Â· Proctored Zone`
-      : `Level ${level} Â· Metro Finals`;
+    campaignLevel <= 3
+      ? `Level ${campaignLevel} · Free Zone`
+      : campaignLevel <= 6
+      ? `Level ${campaignLevel} · Proctored Zone`
+      : `Level ${campaignLevel} · Metro Finals`;
 
   return (
-    <SafeAreaView style={styles.safeArea}>
+    <SafeAreaView style={styles.safeArea} edges={['top', 'left', 'right']}>
       <ScrollView
         contentContainerStyle={styles.scrollContainer}
         showsVerticalScrollIndicator={false}
@@ -174,7 +223,7 @@ export const DashboardScreen: React.FC<DashboardScreenProps> = ({ navigation }) 
           </View>
           
           <Text style={{ fontSize: 13, color: colors.muted, textAlign: 'center', marginVertical: 8, fontFamily: typography.fontFamily.medium }}>
-            {trialsRemaining} attempts left today
+            {formatTrialsLeft(trialsRemaining)}
           </Text>
 
           {freeZoneComplete ? (
@@ -184,27 +233,28 @@ export const DashboardScreen: React.FC<DashboardScreenProps> = ({ navigation }) 
               onPress={() => alert("Payment isn't live yet. You'll be notified when Level 4 opens.")}
             >
               <Text style={styles.startLevelBtnText}>
-                o" Unlock Level 4 +' Priority Access
+                Unlock Level 4 · Priority Access
               </Text>
             </TouchableOpacity>
-          ) : todayCompleted ? (
-            <View style={[styles.startLevelBtn, { backgroundColor: colors.border }]}>
-              <Text style={[styles.startLevelBtnText, { color: colors.mutedDim }]}>
-                o" Come back tomorrow +' Level {campaignLevel + 1} unlocked
-              </Text>
-            </View>
           ) : (
             <TouchableOpacity
               activeOpacity={0.85}
               style={styles.startLevelBtn}
-              onPress={() =>
-                navigation.navigate('Quiz', {
-                  level: campaignLevel,
-                })
-              }
+              onPress={() => {
+                const level = Math.max(1, campaignLevel || 1);
+                const parent = navigation.getParent?.();
+                if (parent) {
+                  parent.navigate('DashboardTab', {
+                    screen: 'Quiz',
+                    params: { level },
+                  });
+                  return;
+                }
+                navigation.navigate('Quiz', { level });
+              }}
             >
               <Text style={styles.startLevelBtnText}>
-                s Start Level {campaignLevel} Challenge +'
+                Start Level {campaignLevel} Challenge
               </Text>
             </TouchableOpacity>
           )}
@@ -217,7 +267,7 @@ export const DashboardScreen: React.FC<DashboardScreenProps> = ({ navigation }) 
             activeOpacity={0.7}
             onPress={() => navigation.navigate('LevelPath')}
           >
-            <Text style={styles.sectionHeadSee}>See all â†’</Text>
+            <Text style={styles.sectionHeadSee}>See all →</Text>
           </TouchableOpacity>
         </View>
 
@@ -226,7 +276,7 @@ export const DashboardScreen: React.FC<DashboardScreenProps> = ({ navigation }) 
           {activeDisciplines.map((item, index) => {
             const discColor = (colors as any)[item.color] || colors.teal;
             return (
-              <View key={index} style={styles.discCard}>
+              <View key={item.id || String(index)} style={[styles.discCard, { width: cardWidth }]}>
                 <View
                   style={[
                     styles.discChip,
@@ -241,7 +291,7 @@ export const DashboardScreen: React.FC<DashboardScreenProps> = ({ navigation }) 
                   {item.name}
                 </Text>
                 <Text style={styles.discLv}>
-                  Lv {Math.max(1, level > 0 ? level : 1)}
+                  Lv {Math.max(1, campaignLevel)}
                 </Text>
               </View>
             );
@@ -267,7 +317,7 @@ const styles = StyleSheet.create({
   scrollContainer: {
     paddingHorizontal: 18,
     paddingTop: 14,
-    paddingBottom: 90,
+    paddingBottom: 28,
   },
   brandRow: {
     flexDirection: 'row',
@@ -336,7 +386,7 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   levelTitle: {
-    fontSize: 15.5,
+    fontSize: 19,
     fontWeight: typography.fontWeight.extrabold,
     color: colors.text,
     marginBottom: 6,
@@ -350,12 +400,12 @@ const styles = StyleSheet.create({
     backgroundColor: colors.goldAlpha12,
     borderWidth: 1,
     borderColor: colors.goldAlpha35,
-    paddingVertical: 4,
-    paddingHorizontal: 9,
+    paddingVertical: 5,
+    paddingHorizontal: 11,
     borderRadius: 20,
   },
   badgeStreakText: {
-    fontSize: 10.5,
+    fontSize: 12,
     fontWeight: typography.fontWeight.bold,
     color: colors.gold,
   },
@@ -363,19 +413,20 @@ const styles = StyleSheet.create({
     backgroundColor: colors.tealAlpha12,
     borderWidth: 1,
     borderColor: colors.tealAlpha35,
-    paddingVertical: 4,
-    paddingHorizontal: 9,
+    paddingVertical: 5,
+    paddingHorizontal: 11,
     borderRadius: 20,
   },
   badgeRankText: {
-    fontSize: 10.5,
+    fontSize: 12,
     fontWeight: typography.fontWeight.bold,
     color: colors.teal,
   },
   startLevelBtn: {
     marginTop: 16,
     width: '100%',
-    paddingVertical: 15,
+    paddingVertical: 16,
+    minHeight: 52,
     borderRadius: 14,
     backgroundColor: colors.teal,
     alignItems: 'center',
@@ -387,7 +438,7 @@ const styles = StyleSheet.create({
     elevation: 8,
   },
   startLevelBtnText: {
-    fontSize: 14.5,
+    fontSize: 16,
     fontWeight: typography.fontWeight.extrabold,
     color: '#062017',
   },
@@ -401,61 +452,62 @@ const styles = StyleSheet.create({
     backgroundColor: colors.card,
     borderWidth: 1,
     borderColor: colors.border,
-    borderRadius: 12,
-    padding: 10,
+    borderRadius: 14,
+    padding: 12,
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
+    gap: 10,
   },
   rdmCoinGold: {
-    width: 22,
-    height: 22,
-    borderRadius: 11,
+    width: 26,
+    height: 26,
+    borderRadius: 13,
     backgroundColor: colors.gold,
     alignItems: 'center',
     justifyContent: 'center',
   },
   rdmCoinGoldText: {
-    fontSize: 11,
+    fontSize: 13,
     fontWeight: typography.fontWeight.black,
     color: '#1a1400',
   },
   rdmCoinTeal: {
-    width: 22,
-    height: 22,
-    borderRadius: 11,
+    width: 26,
+    height: 26,
+    borderRadius: 13,
     backgroundColor: colors.teal,
     alignItems: 'center',
     justifyContent: 'center',
   },
   rdmCoinTealText: {
-    fontSize: 11,
+    fontSize: 13,
     fontWeight: typography.fontWeight.black,
     color: '#04140E',
   },
   rdmValue: {
-    fontSize: 13,
+    fontSize: 16.5,
     fontWeight: typography.fontWeight.extrabold,
     color: colors.text,
   },
   rdmLabel: {
-    fontSize: 8.5,
+    fontSize: 11.5,
     color: colors.mutedDim,
     textTransform: 'uppercase',
+    letterSpacing: 0.4,
   },
   sectionHead: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginVertical: 10,
+    marginVertical: 12,
   },
   sectionHeadTitle: {
-    fontSize: 14,
+    fontSize: 17,
     fontWeight: typography.fontWeight.bold,
     color: colors.text,
   },
   sectionHeadSee: {
-    fontSize: 11,
+    fontSize: 13.5,
     color: colors.teal,
     fontWeight: typography.fontWeight.bold,
   },
@@ -466,34 +518,33 @@ const styles = StyleSheet.create({
     marginBottom: 16,
   },
   discCard: {
-    width: '31.5%',
     backgroundColor: colors.card,
     borderWidth: 1,
     borderColor: colors.border,
-    borderRadius: 12,
-    paddingVertical: 10,
-    paddingHorizontal: 6,
+    borderRadius: 14,
+    paddingVertical: 12,
+    paddingHorizontal: 4,
     alignItems: 'center',
     justifyContent: 'center',
   },
   discChip: {
-    paddingVertical: 2,
-    paddingHorizontal: 6,
+    paddingVertical: 3,
+    paddingHorizontal: 7,
     borderRadius: 6,
     marginBottom: 6,
   },
   discChipText: {
-    fontSize: 8,
+    fontSize: 11,
     fontWeight: typography.fontWeight.extrabold,
   },
   discName: {
-    fontSize: 10.5,
+    fontSize: 12.5,
     fontWeight: typography.fontWeight.bold,
     color: colors.text,
     textAlign: 'center',
   },
   discLv: {
-    fontSize: 9,
+    fontSize: 11,
     color: colors.mutedDim,
     marginTop: 2,
   },

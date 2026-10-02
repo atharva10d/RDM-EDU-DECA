@@ -1,6 +1,12 @@
 import { supabase } from '../lib/supabase';
 import { UserProfile } from '@edudeca/types';
 import { edudecaApi } from './edudecaApi';
+import {
+  assertProfileWriteSucceeded,
+  honestProfileText,
+  level4ConsentFromProfile,
+  toEdudecaProfileRow,
+} from './studentLoop/profileColumns';
 
 export const userService = {
   /**
@@ -21,9 +27,10 @@ export const userService = {
       .from('edudeca_profiles')
       .select('*')
       .eq('id', uid)
-      .single();
+      .maybeSingle();
 
     if (error) throw new Error(error.message);
+    if (!profile) throw new Error('Profile not found');
 
     // Also fetch progress from website API
     let progress: any = {};
@@ -35,17 +42,17 @@ export const userService = {
 
     return {
       id: profile.id,
-      name: profile.full_name || profile.name || 'Whiz Student',
+      name: honestProfileText(profile.full_name || profile.name).replace(/^—$/, '') || 'Student',
       email: profile.email || '',
       classGrade: profile.class_level === 12 ? 'Class 12' : 'Class 11',
       scienceStream: true,
-      institution: profile.institution || '',
+      institution: profile.institution_name || '',
       state: profile.state || '',
       city: profile.city || '',
-      level4Consent: profile.level4_consent ?? true,
+      level4Consent: level4ConsentFromProfile(profile),
       selectedTrack: (profile.selected_track as any) || 'A',
-      level: progress.campaign_level ?? profile.level ?? 0,
-      streak: progress.streak ?? 0,
+      level: progress.campaignLevel ?? progress.campaign_level ?? profile.level ?? 0,
+      streak: progress.streakDays ?? progress.streak ?? 0,
       rdmBalance: progress.xp ?? 0,
       quizzesCompleted: progress.quizzes_completed ?? 0,
     };
@@ -64,37 +71,23 @@ export const userService = {
       uid = sessionData.session?.user?.id;
     }
 
-    // Map our internal field names to Supabase column names
-    const updateData: Record<string, any> = {};
-    if (profileUpdate.name) updateData.full_name = profileUpdate.name;
-    if (profileUpdate.email) updateData.email = profileUpdate.email;
-    if (profileUpdate.classGrade) {
-      updateData.class_level = profileUpdate.classGrade === 'Class 12' ? 12 : 11;
-    }
-    if (profileUpdate.institution) updateData.institution = profileUpdate.institution;
-    if (profileUpdate.state) updateData.state = profileUpdate.state;
-    if (profileUpdate.city) updateData.city = profileUpdate.city;
-
     if (uid) {
-      try {
-        await supabase
-          .from('edudeca_profiles')
-          .upsert({ id: uid, ...updateData }, { onConflict: 'id' });
-      } catch (_e) {
-        // Ignore if RLS restrictions apply
-      }
+      const { error } = await supabase
+        .from('edudeca_profiles')
+        .upsert({ id: uid, ...toEdudecaProfileRow(profileUpdate) }, { onConflict: 'id' });
+      assertProfileWriteSucceeded(error);
     }
 
     return {
       id: uid || 'local_user',
-      name: profileUpdate.name || 'Whiz Student',
+      name: profileUpdate.name || 'Student',
       email: profileUpdate.email || '',
       classGrade: profileUpdate.classGrade === 'Class 12' ? 'Class 12' : 'Class 11',
       scienceStream: true,
       institution: profileUpdate.institution || '',
       state: profileUpdate.state || '',
       city: profileUpdate.city || '',
-      level4Consent: profileUpdate.level4Consent ?? true,
+      level4Consent: profileUpdate.level4Consent === true,
       selectedTrack: profileUpdate.selectedTrack || 'A',
       level: profileUpdate.level ?? 0,
       streak: profileUpdate.streak ?? 0,

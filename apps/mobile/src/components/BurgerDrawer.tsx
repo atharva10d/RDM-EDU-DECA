@@ -12,7 +12,7 @@ import {
   Platform,
 } from 'react-native';
 import { colors, typography, borderRadius, spacing } from '@edudeca/ui';
-import { supabase } from '../lib/supabase';
+import { signOutGoogleAndSupabase } from '../lib/googleAuth';
 import { useAppStore } from '../store/useAppStore';
 import {
   Home,
@@ -62,7 +62,7 @@ export const BurgerDrawer: React.FC<BurgerDrawerProps> = ({
   const handleSignOut = async () => {
     onClose();
     try {
-      await supabase.auth.signOut();
+      await signOutGoogleAndSupabase();
     } catch (_err) {
       // Ignored
     }
@@ -233,14 +233,14 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   brandText: {
-    fontSize: 15,
+    fontSize: 17,
     fontWeight: typography.fontWeight.extrabold,
     color: colors.text,
   },
   menuClose: {
-    width: 30,
-    height: 30,
-    borderRadius: 15,
+    width: 32,
+    height: 32,
+    borderRadius: 16,
     backgroundColor: colors.card,
     borderWidth: 1,
     borderColor: colors.border,
@@ -251,13 +251,13 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 12,
-    paddingVertical: 13,
-    paddingHorizontal: 10,
+    paddingVertical: 14,
+    paddingHorizontal: 12,
     borderRadius: 11,
     marginBottom: 4,
   },
   menuItemText: {
-    fontSize: 13.5,
+    fontSize: 15.5,
     fontWeight: typography.fontWeight.bold,
     color: colors.text,
   },

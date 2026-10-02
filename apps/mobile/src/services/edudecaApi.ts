@@ -1,30 +1,44 @@
-﻿/**
- * EduDeca Website API Client
- *
- * Calls the EduDeca website REST APIs at www.edudeca.com/api/*
- * All requests include the Supabase access_token as Bearer auth.
+/**
+ * EduDeca website REST client — same routes as EduDeca Next.js (`/api/*`).
+ * Auth: Supabase access token as `Authorization: Bearer`.
  */
+import { env } from '../lib/env';
 import { supabase } from '../lib/supabase';
+import { shouldClearSessionOnApiStatus } from './studentLoop/shouldClearSessionOnApiStatus';
 
-const EDUDECA_API_BASE =
-  process.env.EXPO_PUBLIC_EDUDECA_API_URL || 'https://edudeca.com/api';
+const EDUDECA_API_BASE = env.edudecaApiUrl;
 
 interface EdudecaApiOptions {
   method?: 'GET' | 'POST' | 'PUT' | 'DELETE' | 'PATCH';
-  body?: any;
+  body?: unknown;
   params?: Record<string, string | number | boolean | undefined>;
+}
+
+export class EdudecaApiError extends Error {
+  status: number;
+  code?: string;
+  payload: unknown;
+
+  constructor(message: string, status: number, payload: unknown) {
+    super(message);
+    this.name = 'EdudecaApiError';
+    this.status = status;
+    this.payload = payload;
+    if (payload && typeof payload === 'object' && 'code' in payload) {
+      const code = (payload as { code?: unknown }).code;
+      if (typeof code === 'string') this.code = code;
+    }
+  }
 }
 
 async function edudecaFetch<T>(endpoint: string, options: EdudecaApiOptions = {}): Promise<T> {
   const { method = 'GET', body, params } = options;
 
-  // Get the current Supabase access token
   const { data: sessionData } = await supabase.auth.getSession();
   const accessToken = sessionData.session?.access_token;
 
   let url = `${EDUDECA_API_BASE}${endpoint.startsWith('/') ? endpoint : `/${endpoint}`}`;
 
-  // Append query params
   if (params) {
     const searchParams = new URLSearchParams();
     Object.entries(params).forEach(([key, value]) => {
@@ -42,7 +56,8 @@ async function edudecaFetch<T>(endpoint: string, options: EdudecaApiOptions = {}
   };
 
   if (accessToken) {
-    headers['Authorization'] = `Bearer ${accessToken}`;
+    headers.Authorization = `Bearer ${accessToken}`;
+    headers['x-supabase-authorization'] = `Bearer ${accessToken}`;
   }
 
   const response = await fetch(url, {
@@ -54,62 +69,95 @@ async function edudecaFetch<T>(endpoint: string, options: EdudecaApiOptions = {}
   const data = await response.json().catch(() => null);
 
   if (!response.ok) {
-    const errMsg = data?.error || data?.message || `API Error ${response.status}`;
-    throw new Error(errMsg);
+    const errMsg =
+      (data && typeof data === 'object' && 'error' in data && typeof data.error === 'string'
+        ? data.error
+        : null) ||
+      (data && typeof data === 'object' && 'message' in data && typeof data.message === 'string'
+        ? data.message
+        : null) ||
+      `API Error ${response.status}`;
+    if (shouldClearSessionOnApiStatus(response.status)) {
+      await supabase.auth.signOut();
+    }
+    throw new EdudecaApiError(errMsg, response.status, data);
   }
 
   return data as T;
 }
 
-// â”€â”€â”€ Challenge / Daily Quiz APIs â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-
 export interface ChallengeAvailability {
-  available: boolean;
+  ready: number[] | null;
+  error?: string;
+  code?: string;
+  available?: boolean;
   reason?: string;
   class_level?: number;
-  [key: string]: any;
+  [key: string]: unknown;
 }
 
 export interface ChallengeQuestion {
   id: string;
-  question: string;
+  subjectId?: string;
+  stem?: string;
   options: string[];
-  correct_index: number;
-  discipline: string;
+  correctIndex?: number;
+  question?: string;
+  correct_index?: number;
+  discipline?: string;
   class?: string;
-  [key: string]: any;
+  [key: string]: unknown;
 }
 
 export interface ChallengeCompletePayload {
-  level: number;
-  score: number;
+  reason: 'won' | 'strikes' | 'time' | 'below_threshold' | 'quit';
+  correct: number;
   total: number;
-  timeTaken: number;
-  answers?: Record<string, number>;
-  [key: string]: any;
+  results: Array<{
+    questionId: string;
+    subjectId: string;
+    isCorrect: boolean;
+    skipped?: boolean;
+  }>;
+  campaignLevelAtStart: number;
+  strikes?: number;
 }
 
 export interface ChallengeCompleteResponse {
-  success: boolean;
+  saved?: boolean;
+  progress?: EduDecaProgressDto;
+  trials?: TrialResponse;
   xp_earned?: number;
   new_level?: number;
   leveled_up?: boolean;
-  [key: string]: any;
+  [key: string]: unknown;
 }
 
-export interface ProgressResponse {
-  campaign_level: number;
+export interface EduDecaProgressDto {
+  campaignLevel: number;
   xp: number;
-  streak: number;
-  disciplines?: string[];
-  last_challenge_date?: string;
-  [key: string]: any;
+  streakDays: number;
+  todayCompleted: boolean;
+  freeZoneComplete: boolean;
+  disciplines?: string[] | null;
+  lastChallengeDate?: string | null;
+}
+
+export interface ProgressResponse extends EduDecaProgressDto {
+  campaign_level?: number;
+  streak?: number;
+  [key: string]: unknown;
 }
 
 export interface TrialResponse {
+  remaining?: number | null;
   trials_remaining?: number;
-  gate_level?: number;
-  [key: string]: any;
+  level?: number;
+  gate?: string;
+  unlimited?: boolean;
+  failCount?: number;
+  limit?: number;
+  [key: string]: unknown;
 }
 
 export interface MockAttempt {
@@ -117,61 +165,79 @@ export interface MockAttempt {
   score: number;
   total: number;
   completed_at: string;
-  [key: string]: any;
+  [key: string]: unknown;
 }
 
-// â”€â”€â”€ Exported API Functions â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+function asRecord(value: unknown): Record<string, unknown> | null {
+  if (!value || typeof value !== 'object') return null;
+  return value as Record<string, unknown>;
+}
+
+export function unwrapProgress(data: unknown): ProgressResponse {
+  const root = asRecord(data) ?? {};
+  const inner = asRecord(root.progress) ?? root;
+  const campaignLevel = Number(inner.campaignLevel ?? inner.campaign_level ?? 1) || 1;
+  const xp = Number(inner.xp ?? 0) || 0;
+  const streakDays = Number(inner.streakDays ?? inner.streak ?? 0) || 0;
+  return {
+    ...inner,
+    campaignLevel,
+    campaign_level: campaignLevel,
+    xp,
+    streakDays,
+    streak: streakDays,
+    todayCompleted: Boolean(inner.todayCompleted),
+    freeZoneComplete: Boolean(inner.freeZoneComplete),
+    disciplines: Array.isArray(inner.disciplines) ? (inner.disciplines as string[]) : [],
+    lastChallengeDate:
+      typeof inner.lastChallengeDate === 'string'
+        ? inner.lastChallengeDate
+        : typeof inner.last_challenge_date === 'string'
+          ? inner.last_challenge_date
+          : null,
+  };
+}
 
 export const edudecaApi = {
-  /**
-   * GET /api/progress â€” Student's current progress (level, XP, streak)
-   */
-  getProgress: () =>
-    edudecaFetch<ProgressResponse>('/progress'),
+  getProgress: async () => unwrapProgress(await edudecaFetch<unknown>('/progress')),
 
-  /**
-   * PATCH /api/progress - Save discipline lineup
-   */
-  patchProgress: (payload: { disciplines: string[] }) =>
-    edudecaFetch<any>('/progress', {
-      method: 'PATCH',
-      body: payload,
-    }),
+  patchProgress: async (payload: { disciplines: string[] }) =>
+    unwrapProgress(
+      await edudecaFetch<unknown>('/progress', {
+        method: 'PATCH',
+        body: payload,
+      })
+    ),
 
-  /**
-   * GET /api/challenge/availability â€” Is the daily challenge available?
-   */
-  getChallengeAvailability: () =>
-    edudecaFetch<ChallengeAvailability>('/challenge/availability'),
+  getChallengeAvailability: () => edudecaFetch<ChallengeAvailability>('/challenge/availability'),
 
-  /**
-   * GET /api/challenge/questions?level=N â€” Get shuffled, non-repeating questions
-   */
-  getChallengeQuestions: (level: number) =>
+  getChallengeQuestions: (level: number, disciplines?: string[]) =>
     edudecaFetch<{ questions: ChallengeQuestion[] }>('/challenge/questions', {
-      params: { level },
+      params: {
+        level,
+        ...(disciplines && disciplines.length > 0
+          ? { disciplines: disciplines.join(',') }
+          : {}),
+      },
     }),
 
-  /**
-   * POST /api/challenge/complete â€” Submit challenge results
-   */
   completeChallenge: (payload: ChallengeCompletePayload) =>
     edudecaFetch<ChallengeCompleteResponse>('/challenge/complete', {
       method: 'POST',
       body: payload,
     }),
 
-  /**
-   * GET /api/challenge/trials â€” Level gate / trial status
-   */
-  getTrials: () =>
-    edudecaFetch<TrialResponse>('/challenge/trials'),
+  getTrials: () => edudecaFetch<TrialResponse>('/challenge/trials'),
 
-  /**
-   * GET /api/mock-attempts â€” Past mock exam results
-   */
-  getMockAttempts: () =>
-    edudecaFetch<{ attempts: MockAttempt[] }>('/mock-attempts'),
+  getMockAttempts: () => edudecaFetch<{ attempts: MockAttempt[] }>('/mock-attempts'),
+
+  getLeaderboard: () => edudecaFetch<{ rows: unknown[] }>('/leaderboard'),
+
+  getReferralMine: () => edudecaFetch<unknown>('/referral/mine'),
+
+  claimReferral: (ref: string) =>
+    edudecaFetch<unknown>('/referral/claim', {
+      method: 'POST',
+      body: { ref },
+    }),
 };
-
-

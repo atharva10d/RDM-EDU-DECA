@@ -21,7 +21,7 @@ export const getGateErrorAction = (reason: string) => {
     case 'TRIALS_EXHAUSTED':
       return {
         title: 'Attempts Exhausted',
-        message: "You've used all 10 attempts today. Come back tomorrow.",
+        message: 'You have used all 10 attempts on this level.',
         navigate: 'Dashboard',
       };
     case 'CLASS_LEVEL_REQUIRED':

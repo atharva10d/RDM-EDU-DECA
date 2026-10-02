@@ -82,15 +82,15 @@ const styles = StyleSheet.create({
   baseBadge: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 4,
-    paddingVertical: 4,
-    paddingHorizontal: 9,
+    gap: 5,
+    paddingVertical: 5,
+    paddingHorizontal: 11,
     borderRadius: borderRadius.round,
     borderWidth: 1,
     alignSelf: 'flex-start',
   },
   baseText: {
-    fontSize: typography.fontSize.xs + 0.5,
+    fontSize: typography.fontSize.xs,
     fontWeight: typography.fontWeight.bold,
   },
   badgeStreak: {
